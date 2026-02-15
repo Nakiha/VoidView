@@ -1,0 +1,34 @@
+[project]
+name = "voidview"
+version = "0.1.0"
+description = "VoidView - 视频质量评测系统"
+requires-python = ">=3.10"
+
+[project.optional-dependencies]
+server = [
+    "voidview-server",
+    "voidview-shared",
+]
+client = [
+    "voidview-client",
+    "voidview-shared",
+]
+all = [
+    "voidview-server",
+    "voidview-client",
+    "voidview-shared",
+]
+
+[tool.uv]
+dev-dependencies = []
+
+[tool.uv.sources]
+voidview-shared = { workspace = true }
+voidview-server = { workspace = true }
+voidview-client = { workspace = true }
+
+[tool.uv.workspace]
+members = ["shared", "server", "client"]
+
+[tool.hatch.build.targets.wheel]
+packages = []
