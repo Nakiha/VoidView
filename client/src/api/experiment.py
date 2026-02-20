@@ -8,9 +8,11 @@ from models.experiment import (
     AppResponse, AppCreateRequest, AppUpdateRequest,
     TemplateResponse, TemplateCreateRequest, TemplateUpdateRequest,
     ExperimentResponse, ExperimentCreateRequest, ExperimentUpdateRequest, ExperimentListResponse,
+    ExperimentWithTemplatesResponse, ExperimentTemplateLinkRequest,
     ExperimentGroupResponse, ExperimentGroupCreateRequest, ExperimentGroupBatchCreateRequest,
     ExperimentGroupUpdateRequest,
     ObjectiveMetricsResponse, ObjectiveMetricsCreateRequest, ObjectiveMetricsUpdateRequest,
+    MatrixResponse,
 )
 
 
@@ -152,6 +154,24 @@ class ExperimentAPI:
     def delete(experiment_id: int) -> dict:
         """删除实验"""
         return api_client.delete(f"/experiments/{experiment_id}")
+
+    @staticmethod
+    def get_matrix() -> MatrixResponse:
+        """获取客户矩阵数据"""
+        response = api_client.get("/experiments/matrix")
+        return MatrixResponse(**response)
+
+    @staticmethod
+    def link_templates(experiment_id: int, data: ExperimentTemplateLinkRequest) -> ExperimentWithTemplatesResponse:
+        """关联模板到实验"""
+        response = api_client.post(f"/experiments/{experiment_id}/templates", data)
+        return ExperimentWithTemplatesResponse(**response)
+
+    @staticmethod
+    def unlink_template(experiment_id: int, template_id: int) -> ExperimentWithTemplatesResponse:
+        """解除实验与模板的关联"""
+        response = api_client.delete(f"/experiments/{experiment_id}/templates/{template_id}")
+        return ExperimentWithTemplatesResponse(**response)
 
     @staticmethod
     def list_groups(experiment_id: int) -> List[ExperimentGroupResponse]:

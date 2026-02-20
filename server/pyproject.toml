@@ -18,6 +18,7 @@ dependencies = [
     "pydantic-settings>=2.0",
     "loguru>=0.7",
     "voidview-shared",
+    "openpyxl>=3.1",
 ]
 
 [project.optional-dependencies]

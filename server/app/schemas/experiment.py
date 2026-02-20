@@ -1,7 +1,7 @@
 """实验相关的 Pydantic 模型"""
 
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict
 
 from pydantic import BaseModel, Field
 
@@ -106,9 +106,25 @@ class TemplateResponse(TemplateBase):
         from_attributes = True
 
 
+class TemplateBrief(TemplateBase):
+    """模板简要响应（用于嵌套）"""
+    id: int
+    app_id: int
+
+    class Config:
+        from_attributes = True
+
+
 class TemplateWithExperimentsResponse(TemplateResponse):
     """模板响应（含实验列表）"""
     experiments: List["ExperimentResponse"] = []
+
+
+class TemplateWithParentResponse(TemplateResponse):
+    """模板响应（含父级信息）"""
+    app_name: str
+    customer_id: int
+    customer_name: str
 
 
 # ============ Experiment ============
@@ -121,7 +137,7 @@ class ExperimentBase(BaseModel):
 
 class ExperimentCreate(ExperimentBase):
     """创建实验请求"""
-    template_id: int
+    template_ids: List[int] = Field(..., min_length=1, description="关联的模板ID列表")
 
 
 class ExperimentUpdate(BaseModel):
@@ -129,13 +145,14 @@ class ExperimentUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=200)
     status: Optional[ExperimentStatus] = None
     reference_type: Optional[ReferenceType] = None
+    color: Optional[str] = Field(None, max_length=10)
 
 
 class ExperimentResponse(ExperimentBase):
     """实验响应"""
     id: int
-    template_id: int
     status: ExperimentStatus
+    color: Optional[str] = None
     created_at: datetime
     created_by: int
     updated_at: Optional[datetime] = None
@@ -144,14 +161,31 @@ class ExperimentResponse(ExperimentBase):
         from_attributes = True
 
 
+class ExperimentBrief(BaseModel):
+    """实验简要信息（用于矩阵和卡片）"""
+    id: int
+    name: str
+    status: ExperimentStatus
+    color: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ExperimentWithTemplatesResponse(ExperimentResponse):
+    """实验响应（含关联模板列表）"""
+    templates: List["TemplateBrief"] = []
+
+
 class ExperimentWithGroupsResponse(ExperimentResponse):
     """实验响应（含实验组列表）"""
+    templates: List["TemplateBrief"] = []
     groups: List["ExperimentGroupResponse"] = []
 
 
 class ExperimentWithDetailsResponse(ExperimentResponse):
     """实验响应（含完整详情）"""
-    template: TemplateResponse
+    templates: List["TemplateWithParentResponse"] = []
     creator: "UserBriefResponse"
     groups: List["ExperimentGroupResponse"] = []
 
@@ -164,6 +198,30 @@ class UserBriefResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ============ 矩阵相关 ============
+
+class MatrixRow(BaseModel):
+    """矩阵行数据"""
+    customer_id: int
+    customer_name: str
+    app_id: int
+    app_name: str
+    template_id: int
+    template_name: str
+    experiments: Dict[int, ExperimentBrief] = Field(default_factory=dict, description="{experiment_id: ExperimentBrief}")
+
+
+class MatrixResponse(BaseModel):
+    """矩阵响应"""
+    rows: List[MatrixRow]
+    experiments: List[ExperimentBrief]  # 所有实验（作为列头）
+
+
+class ExperimentTemplateLink(BaseModel):
+    """实验-模板关联请求"""
+    template_ids: List[int]
 
 
 # ============ ExperimentGroup ============
@@ -283,6 +341,7 @@ class PaginatedResponse(BaseModel):
 CustomerWithAppsResponse.model_rebuild()
 AppWithTemplatesResponse.model_rebuild()
 TemplateWithExperimentsResponse.model_rebuild()
+ExperimentWithTemplatesResponse.model_rebuild()
 ExperimentWithGroupsResponse.model_rebuild()
 ExperimentWithDetailsResponse.model_rebuild()
 ExperimentGroupWithMetricsResponse.model_rebuild()

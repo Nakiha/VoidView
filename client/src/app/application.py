@@ -6,10 +6,10 @@ import threading
 from typing import Optional
 from pathlib import Path
 
-from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout
+from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
 from PySide6.QtCore import Qt, QThread, Signal, qInstallMessageHandler
 from PySide6.QtGui import QIcon
-from qfluentwidgets import setThemeColor, setTheme, Theme, InfoBar, InfoBarPosition, SubtitleLabel, IndeterminateProgressRing
+from qfluentwidgets import setThemeColor, setTheme, Theme, InfoBar, InfoBarPosition, SubtitleLabel, IndeterminateProgressRing, FluentWindow
 
 from voidview_shared import setup_logging, get_logger
 
@@ -36,6 +36,14 @@ logger = get_logger()
 def _qt_message_handler(mode, context, message):
     """Qt 消息处理器 - 将 Qt 日志重定向到 loguru"""
     from PySide6.QtCore import QtMsgType
+
+    # 过滤掉已知的无害警告
+    ignored_patterns = [
+        "QFont::setPointSize: Point size <= 0",  # Qt/qfluentwidgets 字体计算问题
+    ]
+    for pattern in ignored_patterns:
+        if pattern in message:
+            return
 
     # 映射 Qt 消息类型到日志级别
     level_map = {
@@ -131,7 +139,7 @@ class LocalServerStartWorker(QThread):
             self.failed.emit(f"启动失败: {str(e)}")
 
 
-class ConnectingSplashScreen(QWidget):
+class ConnectingSplashScreen(FluentWindow):
     """连接中的启动画面"""
 
     serverConnected = Signal()
@@ -140,46 +148,86 @@ class ConnectingSplashScreen(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._check_worker = None
-        self.setupUI()
-        self.startServerCheck()
 
-    def setupUI(self):
-        """设置界面"""
-        self.setFixedSize(400, 200)
+        self.setFixedSize(400, 180)
         self.setWindowTitle("VoidView - 视频质量评测系统")
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(40, 40, 40, 40)
-        layout.setSpacing(20)
+        # 启用 Mica 效果
+        self.micaEnabled = True
+
+        # 隐藏导航栏
+        self.navigationInterface.hide()
+        self.navigationInterface.panel.setReturnButtonVisible(False)
+
+        # 禁用最大化按钮（对话框固定大小）
+        self.titleBar.maxBtn.hide()
+
+        # 隐藏 stackedWidget（不使用导航系统）
+        self.stackedWidget.hide()
+
+        # 调整内容区域边距：保留标题栏高度(48)，移除左侧导航栏宽度
+        self.widgetLayout.setContentsMargins(0, 48, 0, 0)
+
+        # 创建内容页面并直接添加到 widgetLayout
+        self.contentPage = self._createContentPage()
+        self.widgetLayout.addWidget(self.contentPage)
+
+        # 调整标题栏位置（移除导航栏预留空间）
+        self._adjustTitleBar()
+
+        # 居中显示
+        self._centerWindow()
+
+        # 开始检查服务器
+        self.startServerCheck()
+
+    def _adjustTitleBar(self):
+        """调整标题栏位置，移除导航栏预留空间"""
+        self.titleBar.move(0, 0)
+        self.titleBar.resize(self.width(), self.titleBar.height())
+
+    def resizeEvent(self, event):
+        """重写 resizeEvent，调整标题栏位置"""
+        super().resizeEvent(event)
+        self._adjustTitleBar()
+
+    def _centerWindow(self):
+        """将窗口居中显示"""
+        from PySide6.QtGui import QScreen
+        screen = QScreen.availableGeometry(self.screen())
+        size = self.geometry()
+        self.move(
+            (screen.width() - size.width()) // 2,
+            (screen.height() - size.height()) // 2
+        )
+
+    def _createContentPage(self) -> QWidget:
+        """创建内容页面"""
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(32, 24, 32, 24)
+        layout.setSpacing(16)
 
         # Logo
         logo_path = get_logo_path()
         if logo_path.exists():
             from PySide6.QtSvgWidgets import QSvgWidget
-            logoWidget = QSvgWidget(str(logo_path), self)
-            logoWidget.setFixedSize(48, 48)
+            logoWidget = QSvgWidget(str(logo_path), page)
+            logoWidget.setFixedSize(40, 40)
             layout.addWidget(logoWidget, alignment=Qt.AlignCenter)
 
         # 状态文字
-        self.statusLabel = SubtitleLabel(self)
+        self.statusLabel = SubtitleLabel(page)
         self.statusLabel.setText("正在连接服务器...")
-        self.statusLabel.setStyleSheet("font-size: 16px;")
+        self.statusLabel.setStyleSheet("font-size: 14px;")
         layout.addWidget(self.statusLabel, alignment=Qt.AlignCenter)
 
         # 加载指示器
-        self.progressRing = IndeterminateProgressRing(self)
-        self.progressRing.setFixedSize(32, 32)
+        self.progressRing = IndeterminateProgressRing(page)
+        self.progressRing.setFixedSize(28, 28)
         layout.addWidget(self.progressRing, alignment=Qt.AlignCenter)
 
-        # 应用样式
-        self.setStyleSheet("""
-            QWidget {
-                background-color: #1a1a1a;
-            }
-            SubtitleLabel {
-                color: #ffffff;
-            }
-        """)
+        return page
 
     def startServerCheck(self):
         """开始检查服务器"""
@@ -315,8 +363,22 @@ class VoidViewApplication:
             self._serverConfigDialog.close()
             self._serverConfigDialog = None
 
-        # 显示登录窗口
-        self.showLogin()
+        # 本地模式：自动登录 root 账号
+        try:
+            from voidview_shared.constants import DEFAULT_ROOT_USERNAME, DEFAULT_ROOT_PASSWORD
+            auth_api.login(DEFAULT_ROOT_USERNAME, DEFAULT_ROOT_PASSWORD)
+            user = auth_api.get_current_user()
+            app_state.set_user(user)
+            logger.info(f"本地模式自动登录成功: {user.username}")
+
+            # 直接显示主窗口
+            self._mainWindow = MainWindow()
+            self._mainWindow.logoutRequested.connect(self.onLogout)
+            self._mainWindow.show()
+        except Exception as e:
+            logger.error(f"本地模式自动登录失败: {e}")
+            # 回退到显示登录窗口
+            self.showLogin()
 
     def onLocalServerFailed(self, error: str):
         """本地服务器启动失败"""

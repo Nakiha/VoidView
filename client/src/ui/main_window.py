@@ -25,12 +25,22 @@ class MainWindow(FluentWindow):
         self.resize(settings.WINDOW_WIDTH, settings.WINDOW_HEIGHT)
         self.setMinimumSize(settings.WINDOW_MIN_WIDTH, settings.WINDOW_MIN_HEIGHT)
 
+        # 启用 Mica 效果 (Windows 11 亚克力材质)
+        self.micaEnabled = True
+
+        # 隐藏导航栏的返回按钮
+        self.navigationInterface.panel.setReturnButtonVisible(False)
+
         # 创建页面
         self.homePage = self._createHomePage()
 
-        # 实验管理页面
-        from ui.pages.experiment import ExperimentListPage
-        self.experimentPage = ExperimentListPage(self)
+        # 客户矩阵页面
+        from ui.pages.customer_matrix import CustomerMatrixPage
+        self.customerMatrixPage = CustomerMatrixPage(self)
+
+        # 实验卡片页面
+        from ui.pages.experiment.experiment_card_page import ExperimentCardPage
+        self.experimentCardPage = ExperimentCardPage(self)
 
         self.evaluationPage = self._createPlaceholderPage("评测", "评测功能开发中...")
         self.reviewPage = self._createPlaceholderPage("评审", "评审功能开发中...")
@@ -45,6 +55,19 @@ class MainWindow(FluentWindow):
 
         # 初始化导航
         self._setupNavigation()
+
+        # 居中显示窗口（放在最后，确保所有属性都已初始化）
+        self._centerWindow()
+
+    def _centerWindow(self):
+        """将窗口居中显示"""
+        from PySide6.QtGui import QScreen
+        screen = QScreen.availableGeometry(self.screen())
+        size = self.geometry()
+        self.move(
+            (screen.width() - size.width()) // 2,
+            (screen.height() - size.height()) // 2
+        )
 
     def _createHomePage(self) -> QWidget:
         """创建首页"""
@@ -170,7 +193,8 @@ class MainWindow(FluentWindow):
         """设置导航"""
         # 将页面添加到 stackedWidget
         self.stackedWidget.addWidget(self.homePage)
-        self.stackedWidget.addWidget(self.experimentPage)
+        self.stackedWidget.addWidget(self.customerMatrixPage)
+        self.stackedWidget.addWidget(self.experimentCardPage)
         self.stackedWidget.addWidget(self.evaluationPage)
         self.stackedWidget.addWidget(self.reviewPage)
         self.stackedWidget.addWidget(self.statisticsPage)
@@ -186,10 +210,16 @@ class MainWindow(FluentWindow):
             onClick=lambda: self.switchTo(self.homePage)
         )
         self.navigationInterface.addItem(
+            routeKey='customer_matrix',
+            text='客户矩阵',
+            icon=FluentIcon.VIEW,
+            onClick=lambda: self.switchTo(self.customerMatrixPage)
+        )
+        self.navigationInterface.addItem(
             routeKey='experiment',
-            text='实验管理',
+            text='实验概览',
             icon=FluentIcon.FOLDER,
-            onClick=lambda: self.switchTo(self.experimentPage)
+            onClick=lambda: self.switchTo(self.experimentCardPage)
         )
         self.navigationInterface.addItem(
             routeKey='evaluation',

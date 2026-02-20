@@ -4,13 +4,10 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from jose import jwt, JWTError
-from passlib.context import CryptContext
+import bcrypt
 
 from app.config import settings
 from voidview_shared import UserRole
-
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def create_access_token(subject: int, role: UserRole, expires_delta: Optional[timedelta] = None) -> str:
@@ -55,9 +52,14 @@ def decode_token(token: str) -> Optional[dict]:
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """验证密码"""
-    return pwd_context.verify(plain_password, hashed_password)
+    password_bytes = plain_password.encode('utf-8')
+    hashed_bytes = hashed_password.encode('utf-8')
+    return bcrypt.checkpw(password_bytes, hashed_bytes)
 
 
 def get_password_hash(password: str) -> str:
     """获取密码哈希"""
-    return pwd_context.hash(password)
+    password_bytes = password.encode('utf-8')
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(password_bytes, salt)
+    return hashed.decode('utf-8')

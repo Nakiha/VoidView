@@ -1,104 +1,104 @@
-"""实验管理 API"""
+"""实验管理 API - Excel 存储版本"""
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import datetime
 
-from app.api.deps import get_db, get_current_user
+from app.api.deps import get_current_user
 from app.models.user import User
 from app.services.experiment_service import (
     CustomerService, AppService, TemplateService,
     ExperimentService, ExperimentGroupService, ObjectiveMetricsService
 )
 from app.schemas.experiment import (
-    # Customer
-    CustomerCreate, CustomerUpdate, CustomerResponse, CustomerWithAppsResponse,
-    # App
-    AppCreate, AppUpdate, AppResponse, AppWithTemplatesResponse,
-    # Template
-    TemplateCreate, TemplateUpdate, TemplateResponse, TemplateWithExperimentsResponse,
-    # Experiment
+    CustomerCreate, CustomerUpdate, CustomerResponse,
+    AppCreate, AppUpdate, AppResponse,
+    TemplateCreate, TemplateUpdate, TemplateResponse,
     ExperimentCreate, ExperimentUpdate, ExperimentResponse,
-    ExperimentWithGroupsResponse, ExperimentWithDetailsResponse, ExperimentListResponse,
-    # ExperimentGroup
-    ExperimentGroupCreate, ExperimentGroupBatchCreate, ExperimentGroupUpdate,
-    ExperimentGroupResponse, ExperimentGroupWithMetricsResponse,
-    # ObjectiveMetrics
-    ObjectiveMetricsCreate, ObjectiveMetricsUpdate, ObjectiveMetricsResponse,
+    ExperimentBrief, ExperimentListResponse,
+    ExperimentTemplateLink,
+    MatrixRow, MatrixResponse,
+    ExperimentGroupCreate, ExperimentGroupResponse,
+    ObjectiveMetricsCreate, ObjectiveMetricsResponse,
 )
 from app.core.exceptions import NotFoundException
 
 router = APIRouter(prefix="/experiments", tags=["实验管理"])
 
 
+def _convert_datetime(data: dict) -> dict:
+    """转换 datetime 字段为字符串"""
+    result = dict(data)
+    for key in ['created_at', 'updated_at', 'last_login_at']:
+        if key in result and result[key] is not None:
+            if isinstance(result[key], str):
+                result[key] = datetime.fromisoformat(result[key])
+    return result
+
+
 # ============ Customer API ============
 
 @router.get("/customers", response_model=list[CustomerResponse])
 async def list_customers(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """获取客户列表"""
-    service = CustomerService(db)
+    service = CustomerService()
     customers = await service.list_all()
-    return [CustomerResponse.model_validate(c) for c in customers]
+    return [CustomerResponse.model_validate(_convert_datetime(c)) for c in customers]
 
 
 @router.post("/customers", response_model=CustomerResponse)
 async def create_customer(
     data: CustomerCreate,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """创建客户"""
-    service = CustomerService(db)
+    service = CustomerService()
     customer = await service.create(
         name=data.name,
         contact=data.contact,
         description=data.description
     )
-    return CustomerResponse.model_validate(customer)
+    return CustomerResponse.model_validate(_convert_datetime(customer))
 
 
-@router.get("/customers/{customer_id}", response_model=CustomerWithAppsResponse)
+@router.get("/customers/{customer_id}", response_model=CustomerResponse)
 async def get_customer(
     customer_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """获取客户详情"""
-    service = CustomerService(db)
+    service = CustomerService()
     customer = await service.get_by_id(customer_id)
     if not customer:
         raise NotFoundException("客户不存在")
-    return CustomerWithAppsResponse.model_validate(customer)
+    return CustomerResponse.model_validate(_convert_datetime(customer))
 
 
 @router.put("/customers/{customer_id}", response_model=CustomerResponse)
 async def update_customer(
     customer_id: int,
     data: CustomerUpdate,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """更新客户"""
-    service = CustomerService(db)
+    service = CustomerService()
     customer = await service.update(
         customer_id,
         name=data.name,
         contact=data.contact,
         description=data.description
     )
-    return CustomerResponse.model_validate(customer)
+    return CustomerResponse.model_validate(_convert_datetime(customer))
 
 
 @router.delete("/customers/{customer_id}")
 async def delete_customer(
     customer_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """删除客户"""
-    service = CustomerService(db)
+    service = CustomerService()
     await service.delete(customer_id)
     return {"message": "删除成功"}
 
@@ -108,74 +108,68 @@ async def delete_customer(
 @router.get("/apps", response_model=list[AppResponse])
 async def list_apps(
     customer_id: int = Query(None, description="客户ID"),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """获取应用列表"""
-    service = AppService(db)
+    service = AppService()
     if customer_id:
         apps = await service.list_by_customer(customer_id)
     else:
-        # TODO: 实现全量列表
         apps = []
-    return [AppResponse.model_validate(a) for a in apps]
+    return [AppResponse.model_validate(_convert_datetime(a)) for a in apps]
 
 
 @router.post("/apps", response_model=AppResponse)
 async def create_app(
     data: AppCreate,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """创建应用"""
-    service = AppService(db)
+    service = AppService()
     app = await service.create(
         customer_id=data.customer_id,
         name=data.name,
         description=data.description
     )
-    return AppResponse.model_validate(app)
+    return AppResponse.model_validate(_convert_datetime(app))
 
 
-@router.get("/apps/{app_id}", response_model=AppWithTemplatesResponse)
+@router.get("/apps/{app_id}", response_model=AppResponse)
 async def get_app(
     app_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """获取应用详情"""
-    service = AppService(db)
+    service = AppService()
     app = await service.get_by_id(app_id)
     if not app:
         raise NotFoundException("应用不存在")
-    return AppWithTemplatesResponse.model_validate(app)
+    return AppResponse.model_validate(_convert_datetime(app))
 
 
 @router.put("/apps/{app_id}", response_model=AppResponse)
 async def update_app(
     app_id: int,
     data: AppUpdate,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """更新应用"""
-    service = AppService(db)
+    service = AppService()
     app = await service.update(
         app_id,
         name=data.name,
         description=data.description
     )
-    return AppResponse.model_validate(app)
+    return AppResponse.model_validate(_convert_datetime(app))
 
 
 @router.delete("/apps/{app_id}")
 async def delete_app(
     app_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """删除应用"""
-    service = AppService(db)
+    service = AppService()
     await service.delete(app_id)
     return {"message": "删除成功"}
 
@@ -185,73 +179,68 @@ async def delete_app(
 @router.get("/templates", response_model=list[TemplateResponse])
 async def list_templates(
     app_id: int = Query(None, description="应用ID"),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """获取模板列表"""
-    service = TemplateService(db)
+    service = TemplateService()
     if app_id:
         templates = await service.list_by_app(app_id)
     else:
         templates = []
-    return [TemplateResponse.model_validate(t) for t in templates]
+    return [TemplateResponse.model_validate(_convert_datetime(t)) for t in templates]
 
 
 @router.post("/templates", response_model=TemplateResponse)
 async def create_template(
     data: TemplateCreate,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """创建模板"""
-    service = TemplateService(db)
+    service = TemplateService()
     template = await service.create(
         app_id=data.app_id,
         name=data.name,
         description=data.description
     )
-    return TemplateResponse.model_validate(template)
+    return TemplateResponse.model_validate(_convert_datetime(template))
 
 
-@router.get("/templates/{template_id}", response_model=TemplateWithExperimentsResponse)
+@router.get("/templates/{template_id}", response_model=TemplateResponse)
 async def get_template(
     template_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """获取模板详情"""
-    service = TemplateService(db)
+    service = TemplateService()
     template = await service.get_by_id(template_id)
     if not template:
         raise NotFoundException("模板不存在")
-    return TemplateWithExperimentsResponse.model_validate(template)
+    return TemplateResponse.model_validate(_convert_datetime(template))
 
 
 @router.put("/templates/{template_id}", response_model=TemplateResponse)
 async def update_template(
     template_id: int,
     data: TemplateUpdate,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """更新模板"""
-    service = TemplateService(db)
+    service = TemplateService()
     template = await service.update(
         template_id,
         name=data.name,
         description=data.description
     )
-    return TemplateResponse.model_validate(template)
+    return TemplateResponse.model_validate(_convert_datetime(template))
 
 
 @router.delete("/templates/{template_id}")
 async def delete_template(
     template_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """删除模板"""
-    service = TemplateService(db)
+    service = TemplateService()
     await service.delete(template_id)
     return {"message": "删除成功"}
 
@@ -264,11 +253,10 @@ async def list_experiments(
     page_size: int = Query(20, ge=1, le=100),
     template_id: int = Query(None),
     status: str = Query(None),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """获取实验列表"""
-    service = ExperimentService(db)
+    service = ExperimentService()
     experiments, total = await service.list_experiments(
         page=page,
         page_size=page_size,
@@ -276,68 +264,126 @@ async def list_experiments(
         status=status
     )
     return ExperimentListResponse(
-        items=[ExperimentResponse.model_validate(e) for e in experiments],
+        items=[ExperimentResponse.model_validate(_convert_datetime(e)) for e in experiments],
         total=total,
         page=page,
         page_size=page_size
     )
 
 
+@router.get("/matrix", response_model=MatrixResponse)
+async def get_experiment_matrix(
+    current_user: dict = Depends(get_current_user)
+):
+    """获取客户矩阵数据"""
+    service = ExperimentService()
+    rows, experiments = await service.get_matrix_data()
+
+    # 构建响应
+    from typing import Dict as TypingDict
+    matrix_rows = []
+    for row in rows:
+        exp_dict: TypingDict[int, ExperimentBrief] = {}
+        for k, v in row["experiments"].items():
+            exp_dict[int(k)] = ExperimentBrief(**v)
+
+        matrix_rows.append(MatrixRow(
+            customer_id=row["customer_id"],
+            customer_name=row["customer_name"],
+            app_id=row["app_id"],
+            app_name=row["app_name"],
+            template_id=row["template_id"],
+            template_name=row["template_name"],
+            experiments=exp_dict
+        ))
+
+    experiment_briefs = [
+        ExperimentBrief(
+            id=e["id"],
+            name=e["name"],
+            status=e["status"],
+            color=e.get("color")
+        ) for e in experiments
+    ]
+
+    return MatrixResponse(rows=matrix_rows, experiments=experiment_briefs)
+
+
 @router.post("", response_model=ExperimentResponse)
 async def create_experiment(
     data: ExperimentCreate,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """创建实验"""
-    service = ExperimentService(db)
+    service = ExperimentService()
     experiment = await service.create(
-        template_id=data.template_id,
+        template_ids=data.template_ids,
         name=data.name,
-        created_by=current_user.id,
+        created_by=current_user["id"],
         reference_type=data.reference_type.value
     )
-    return ExperimentResponse.model_validate(experiment)
+    return ExperimentResponse.model_validate(_convert_datetime(experiment))
 
 
-@router.get("/{experiment_id}", response_model=ExperimentWithDetailsResponse)
+@router.get("/{experiment_id}", response_model=ExperimentResponse)
 async def get_experiment(
     experiment_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """获取实验详情"""
-    service = ExperimentService(db)
-    experiment = await service.get_by_id_with_details(experiment_id)
+    service = ExperimentService()
+    experiment = await service.get_by_id(experiment_id)
     if not experiment:
         raise NotFoundException("实验不存在")
-    return ExperimentWithDetailsResponse.model_validate(experiment)
+    return ExperimentResponse.model_validate(_convert_datetime(experiment))
 
 
 @router.put("/{experiment_id}", response_model=ExperimentResponse)
 async def update_experiment(
     experiment_id: int,
     data: ExperimentUpdate,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """更新实验"""
-    service = ExperimentService(db)
+    service = ExperimentService()
     update_data = data.model_dump(exclude_unset=True)
     experiment = await service.update(experiment_id, **update_data)
-    return ExperimentResponse.model_validate(experiment)
+    return ExperimentResponse.model_validate(_convert_datetime(experiment))
 
 
 @router.delete("/{experiment_id}")
 async def delete_experiment(
     experiment_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """删除实验"""
-    service = ExperimentService(db)
+    service = ExperimentService()
     await service.delete(experiment_id)
     return {"message": "删除成功"}
+
+
+@router.post("/{experiment_id}/templates", response_model=ExperimentResponse)
+async def link_templates(
+    experiment_id: int,
+    data: ExperimentTemplateLink,
+    current_user: dict = Depends(get_current_user)
+):
+    """关联模板到实验"""
+    service = ExperimentService()
+    experiment = await service.link_templates(experiment_id, data.template_ids)
+    return ExperimentResponse.model_validate(_convert_datetime(experiment))
+
+
+@router.delete("/{experiment_id}/templates/{template_id}", response_model=ExperimentResponse)
+async def unlink_template(
+    experiment_id: int,
+    template_id: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """解除实验与模板的关联"""
+    service = ExperimentService()
+    experiment = await service.unlink_template(experiment_id, template_id)
+    return ExperimentResponse.model_validate(_convert_datetime(experiment))
 
 
 # ============ ExperimentGroup API ============
@@ -345,11 +391,10 @@ async def delete_experiment(
 @router.get("/{experiment_id}/groups", response_model=list[ExperimentGroupResponse])
 async def list_experiment_groups(
     experiment_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """获取实验组列表"""
-    service = ExperimentGroupService(db)
+    service = ExperimentGroupService()
     groups = await service.list_by_experiment(experiment_id)
     return [ExperimentGroupResponse.model_validate(g) for g in groups]
 
@@ -358,11 +403,10 @@ async def list_experiment_groups(
 async def create_experiment_group(
     experiment_id: int,
     data: ExperimentGroupCreate,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """创建实验组"""
-    service = ExperimentGroupService(db)
+    service = ExperimentGroupService()
     group = await service.create(
         experiment_id=experiment_id,
         name=data.name,
@@ -375,56 +419,15 @@ async def create_experiment_group(
     return ExperimentGroupResponse.model_validate(group)
 
 
-@router.post("/{experiment_id}/groups/batch", response_model=list[ExperimentGroupResponse])
-async def batch_create_experiment_groups(
-    experiment_id: int,
-    data: ExperimentGroupBatchCreate,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """批量创建实验组"""
-    service = ExperimentGroupService(db)
-    groups_data = [g.model_dump() for g in data.groups]
-    groups = await service.batch_create(experiment_id, groups_data)
-    return [ExperimentGroupResponse.model_validate(g) for g in groups]
-
-
-@router.put("/groups/{group_id}", response_model=ExperimentGroupResponse)
-async def update_experiment_group(
-    group_id: int,
-    data: ExperimentGroupUpdate,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """更新实验组"""
-    service = ExperimentGroupService(db)
-    update_data = data.model_dump(exclude_unset=True)
-    group = await service.update(group_id, **update_data)
-    return ExperimentGroupResponse.model_validate(group)
-
-
-@router.delete("/groups/{group_id}")
-async def delete_experiment_group(
-    group_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """删除实验组"""
-    service = ExperimentGroupService(db)
-    await service.delete(group_id)
-    return {"message": "删除成功"}
-
-
 # ============ ObjectiveMetrics API ============
 
 @router.get("/groups/{group_id}/metrics", response_model=ObjectiveMetricsResponse)
 async def get_objective_metrics(
     group_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """获取实验组客观指标"""
-    service = ObjectiveMetricsService(db)
+    service = ObjectiveMetricsService()
     metrics = await service.get_by_group_id(group_id)
     if not metrics:
         raise NotFoundException("客观指标不存在")
@@ -435,11 +438,10 @@ async def get_objective_metrics(
 async def create_or_update_objective_metrics(
     group_id: int,
     data: ObjectiveMetricsCreate,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """创建或更新客观指标"""
-    service = ObjectiveMetricsService(db)
+    service = ObjectiveMetricsService()
     metrics = await service.create_or_update(
         group_id=group_id,
         bitrate=data.bitrate,
@@ -452,18 +454,4 @@ async def create_or_update_objective_metrics(
         gpu_usage=data.gpu_usage,
         detailed_report_url=data.detailed_report_url
     )
-    return ObjectiveMetricsResponse.model_validate(metrics)
-
-
-@router.put("/groups/{group_id}/metrics", response_model=ObjectiveMetricsResponse)
-async def update_objective_metrics(
-    group_id: int,
-    data: ObjectiveMetricsUpdate,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """更新客观指标"""
-    service = ObjectiveMetricsService(db)
-    update_data = data.model_dump(exclude_unset=True)
-    metrics = await service.create_or_update(group_id, **update_data)
     return ObjectiveMetricsResponse.model_validate(metrics)

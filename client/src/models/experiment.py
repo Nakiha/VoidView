@@ -1,7 +1,7 @@
 """实验相关模型"""
 
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict
 
 from pydantic import BaseModel, Field
 
@@ -77,6 +77,17 @@ class TemplateResponse(BaseModel):
         from_attributes = True
 
 
+class TemplateBrief(BaseModel):
+    """模板简要响应（用于嵌套）"""
+    id: int
+    app_id: int
+    name: str
+    description: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
 class TemplateCreateRequest(BaseModel):
     """创建模板请求"""
     app_id: int
@@ -95,10 +106,10 @@ class TemplateUpdateRequest(BaseModel):
 class ExperimentResponse(BaseModel):
     """实验响应模型"""
     id: int
-    template_id: int
     name: str
     status: ExperimentStatus
     reference_type: ReferenceType
+    color: Optional[str] = None
     created_at: datetime
     created_by: int
     updated_at: Optional[datetime] = None
@@ -107,9 +118,25 @@ class ExperimentResponse(BaseModel):
         from_attributes = True
 
 
+class ExperimentBrief(BaseModel):
+    """实验简要信息（用于矩阵和卡片）"""
+    id: int
+    name: str
+    status: ExperimentStatus
+    color: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ExperimentWithTemplatesResponse(ExperimentResponse):
+    """实验响应（含关联模板列表）"""
+    templates: List[TemplateBrief] = []
+
+
 class ExperimentCreateRequest(BaseModel):
     """创建实验请求"""
-    template_id: int
+    template_ids: List[int] = Field(..., min_length=1, description="关联的模板ID列表")
     name: str = Field(..., min_length=1, max_length=200)
     reference_type: ReferenceType = ReferenceType.NEW
 
@@ -119,6 +146,7 @@ class ExperimentUpdateRequest(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=200)
     status: Optional[ExperimentStatus] = None
     reference_type: Optional[ReferenceType] = None
+    color: Optional[str] = Field(None, max_length=10)
 
 
 class ExperimentListResponse(BaseModel):
@@ -127,6 +155,30 @@ class ExperimentListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class ExperimentTemplateLinkRequest(BaseModel):
+    """实验-模板关联请求"""
+    template_ids: List[int]
+
+
+# ============ 矩阵相关 ============
+
+class MatrixRow(BaseModel):
+    """矩阵行数据"""
+    customer_id: int
+    customer_name: str
+    app_id: int
+    app_name: str
+    template_id: int
+    template_name: str
+    experiments: Dict[int, ExperimentBrief] = Field(default_factory=dict)
+
+
+class MatrixResponse(BaseModel):
+    """矩阵响应"""
+    rows: List[MatrixRow]
+    experiments: List[ExperimentBrief]
 
 
 # ============ ExperimentGroup ============

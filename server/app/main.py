@@ -1,4 +1,4 @@
-"""FastAPI 应用入口"""
+"""FastAPI 应用入口 - Excel 存储版本"""
 
 from contextlib import asynccontextmanager
 
@@ -8,10 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from voidview_shared import setup_logging, get_logger
 
 from app.config import settings
-from app.database import init_db
 from app.api.v1.router import api_router
 from app.services.user_service import UserService
-from app.database import AsyncSessionLocal
 
 # 初始化日志
 setup_logging(
@@ -31,15 +29,15 @@ async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     logger.info("VoidView 服务器启动中...")
 
-    # 启动时初始化
-    await init_db()
+    # 初始化 Excel 存储（会自动创建默认 root 用户）
+    from app.storage import excel_store
+    logger.info(f"Excel 数据目录: {excel_store.data_dir}")
 
-    # 初始化 root 账号
-    async with AsyncSessionLocal() as db:
-        user_service = UserService(db)
-        root = await user_service.init_root_user()
-        if root:
-            logger.info("已创建默认 root 账号")
+    # 初始化 root 账号（如果需要）
+    user_service = UserService()
+    root = await user_service.init_root_user()
+    if root:
+        logger.info("已创建默认 root 账号")
 
     logger.info("VoidView 服务器启动完成")
 

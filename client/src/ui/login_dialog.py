@@ -1,13 +1,11 @@
 """登录对话框 - Fluent Design 风格"""
 
 from PySide6.QtCore import Signal, Qt, QThread
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QSpacerItem, QSizePolicy
-from PySide6.QtGui import QFont
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout
 from PySide6.QtSvgWidgets import QSvgWidget
 from qfluentwidgets import (
-    SubtitleLabel, BodyLabel, LineEdit, PrimaryPushButton, PushButton,
-    InfoBar, InfoBarPosition, FluentIcon, MessageBoxBase,
-    isDarkTheme, TransparentToolButton, IconWidget
+    FluentWindow, SubtitleLabel, BodyLabel, LineEdit, PrimaryPushButton,
+    InfoBar, InfoBarPosition, MessageBoxBase
 )
 
 from api import auth_api, APIError, ServerUnreachableError
@@ -38,7 +36,7 @@ class LoginWorker(QThread):
             self.error.emit(f"登录失败: {str(e)}")
 
 
-class LoginDialog(QWidget):
+class LoginDialog(FluentWindow):
     """登录对话框 - Fluent Design 风格"""
 
     loginSuccess = Signal(object)
@@ -48,216 +46,184 @@ class LoginDialog(QWidget):
         self.current_user = None
         self._pending_user = None
         self._login_worker = None  # 登录工作线程
-        self.setupUI()
 
-    def setupUI(self):
-        # 主布局
-        mainLayout = QHBoxLayout(self)
+        self.setWindowTitle("VoidView - 登录")
+        self.setFixedSize(700, 480)
+
+        # 启用 Mica 效果
+        self.micaEnabled = True
+
+        # 隐藏导航栏
+        self.navigationInterface.hide()
+
+        # 隐藏返回按钮
+        self.navigationInterface.panel.setReturnButtonVisible(False)
+
+        # 禁用最大化按钮（对话框固定大小）
+        self.titleBar.maxBtn.hide()
+
+        # 隐藏 stackedWidget（不使用导航系统）
+        self.stackedWidget.hide()
+
+        # 调整内容区域边距：保留标题栏高度(48)，移除左侧导航栏宽度
+        self.widgetLayout.setContentsMargins(0, 48, 0, 0)
+
+        # 创建内容页面并直接添加到 widgetLayout
+        self.contentPage = self._createContentPage()
+        self.widgetLayout.addWidget(self.contentPage)
+
+        # 调整标题栏位置（移除导航栏预留空间）
+        self._adjustTitleBar()
+
+        # 居中显示
+        self._centerWindow()
+
+    def _adjustTitleBar(self):
+        """调整标题栏位置，移除导航栏预留空间"""
+        self.titleBar.move(0, 0)
+        self.titleBar.resize(self.width(), self.titleBar.height())
+
+    def resizeEvent(self, event):
+        """重写 resizeEvent，调整标题栏位置"""
+        super().resizeEvent(event)
+        self._adjustTitleBar()
+
+    def _centerWindow(self):
+        """将窗口居中显示"""
+        from PySide6.QtGui import QScreen
+        screen = QScreen.availableGeometry(self.screen())
+        size = self.geometry()
+        self.move(
+            (screen.width() - size.width()) // 2,
+            (screen.height() - size.height()) // 2
+        )
+
+    def _createContentPage(self) -> QWidget:
+        """创建内容页面"""
+        page = QWidget()
+        mainLayout = QHBoxLayout(page)
         mainLayout.setContentsMargins(0, 0, 0, 0)
         mainLayout.setSpacing(0)
 
-        # 左侧装饰面板 (仅宽屏时显示)
-        self.leftPanel = QWidget()
-        self.leftPanel.setFixedWidth(280)
-        self.leftPanel.setObjectName("leftPanel")
-        self.setupLeftPanel()
-        mainLayout.addWidget(self.leftPanel)
+        # 左侧装饰面板
+        leftPanel = QWidget()
+        leftPanel.setFixedWidth(260)
+        leftPanel.setObjectName("leftPanel")
+        leftLayout = QVBoxLayout(leftPanel)
+        leftLayout.setContentsMargins(32, 32, 32, 32)
+        leftLayout.setSpacing(16)
 
-        # 右侧登录表单
-        self.rightPanel = QWidget()
-        self.rightPanel.setObjectName("rightPanel")
-        self.setupRightPanel()
-        mainLayout.addWidget(self.rightPanel, 1)
-
-        # 设置窗口
-        self.setFixedWidth(700)
-        self.setFixedHeight(500)
-
-        # 应用样式
-        self.applyStyleSheet()
-
-    def setupLeftPanel(self):
-        """设置左侧装饰面板"""
-        layout = QVBoxLayout(self.leftPanel)
-        layout.setContentsMargins(40, 40, 40, 40)
-        layout.setSpacing(20)
-
-        layout.addStretch()
+        leftLayout.addStretch()
 
         # Logo/图标 (使用 SVG)
         logo_path = get_logo_path()
         if logo_path.exists():
-            logoWidget = QSvgWidget(str(logo_path), self.leftPanel)
-            logoWidget.setFixedSize(80, 80)
-            layout.addWidget(logoWidget, alignment=Qt.AlignCenter)
+            logoWidget = QSvgWidget(str(logo_path), leftPanel)
+            logoWidget.setFixedSize(64, 64)
+            leftLayout.addWidget(logoWidget, alignment=Qt.AlignCenter)
         else:
             # 回退到文字
-            logoLabel = SubtitleLabel(self.leftPanel)
+            logoLabel = SubtitleLabel(leftPanel)
             logoLabel.setText("◆")
             logoLabel.setAlignment(Qt.AlignCenter)
-            logoLabel.setStyleSheet("font-size: 64px; color: #0078d4;")
-            layout.addWidget(logoLabel)
+            logoLabel.setStyleSheet("font-size: 48px; color: #0078d4;")
+            leftLayout.addWidget(logoLabel)
 
         # 应用名称
-        nameLabel = SubtitleLabel(self.leftPanel)
+        nameLabel = SubtitleLabel(leftPanel)
         nameLabel.setText("VoidView")
         nameLabel.setAlignment(Qt.AlignCenter)
-        layout.addWidget(nameLabel)
+        leftLayout.addWidget(nameLabel)
 
         # 副标题
-        subtitleLabel = BodyLabel(self.leftPanel)
+        subtitleLabel = BodyLabel(leftPanel)
         subtitleLabel.setText("视频质量评测系统")
         subtitleLabel.setAlignment(Qt.AlignCenter)
-        layout.addWidget(subtitleLabel)
+        leftLayout.addWidget(subtitleLabel)
 
-        layout.addStretch()
+        leftLayout.addStretch()
 
         # 版本信息
-        versionLabel = BodyLabel(self.leftPanel)
+        versionLabel = BodyLabel(leftPanel)
         versionLabel.setText("v0.1.0")
         versionLabel.setAlignment(Qt.AlignCenter)
         versionLabel.setStyleSheet("color: rgba(255, 255, 255, 0.5);")
-        layout.addWidget(versionLabel)
+        leftLayout.addWidget(versionLabel)
 
-    def setupRightPanel(self):
-        """设置右侧登录表单"""
-        layout = QVBoxLayout(self.rightPanel)
-        layout.setContentsMargins(60, 60, 60, 60)
-        layout.setSpacing(20)
+        mainLayout.addWidget(leftPanel)
 
-        layout.addStretch()
+        # 右侧登录表单
+        rightPanel = QWidget()
+        rightPanel.setObjectName("rightPanel")
+        rightLayout = QVBoxLayout(rightPanel)
+        rightLayout.setContentsMargins(48, 48, 48, 48)
+        rightLayout.setSpacing(16)
+
+        rightLayout.addStretch()
 
         # 欢迎标题
-        welcomeLabel = SubtitleLabel(self.rightPanel)
+        welcomeLabel = SubtitleLabel(rightPanel)
         welcomeLabel.setText("欢迎回来")
-        welcomeLabel.setStyleSheet("font-size: 28px; font-weight: 600;")
-        layout.addWidget(welcomeLabel)
+        welcomeLabel.setStyleSheet("font-size: 24px; font-weight: 600;")
+        rightLayout.addWidget(welcomeLabel)
 
         # 提示文字
-        hintLabel = BodyLabel(self.rightPanel)
+        hintLabel = BodyLabel(rightPanel)
         hintLabel.setText("请登录您的账号以继续")
-        layout.addWidget(hintLabel)
+        rightLayout.addWidget(hintLabel)
 
-        layout.addSpacing(20)
+        rightLayout.addSpacing(24)
 
         # 用户名
-        usernameTitle = BodyLabel(self.rightPanel)
+        usernameTitle = BodyLabel(rightPanel)
         usernameTitle.setText("用户名")
-        layout.addWidget(usernameTitle)
+        rightLayout.addWidget(usernameTitle)
 
-        self.usernameEdit = LineEdit(self.rightPanel)
+        self.usernameEdit = LineEdit(rightPanel)
         self.usernameEdit.setPlaceholderText("请输入用户名")
         self.usernameEdit.setClearButtonEnabled(True)
-        self.usernameEdit.setFixedHeight(40)
-        layout.addWidget(self.usernameEdit)
+        self.usernameEdit.setFixedHeight(36)
+        rightLayout.addWidget(self.usernameEdit)
 
-        layout.addSpacing(8)
+        rightLayout.addSpacing(8)
 
         # 密码
-        passwordTitle = BodyLabel(self.rightPanel)
+        passwordTitle = BodyLabel(rightPanel)
         passwordTitle.setText("密码")
-        layout.addWidget(passwordTitle)
+        rightLayout.addWidget(passwordTitle)
 
-        self.passwordEdit = LineEdit(self.rightPanel)
+        self.passwordEdit = LineEdit(rightPanel)
         self.passwordEdit.setPlaceholderText("请输入密码")
         self.passwordEdit.setEchoMode(LineEdit.Password)
         self.passwordEdit.setClearButtonEnabled(True)
-        self.passwordEdit.setFixedHeight(40)
-        layout.addWidget(self.passwordEdit)
+        self.passwordEdit.setFixedHeight(36)
+        rightLayout.addWidget(self.passwordEdit)
 
-        layout.addSpacing(16)
+        rightLayout.addSpacing(16)
 
         # 登录按钮
-        self.loginBtn = PrimaryPushButton(self.rightPanel)
+        self.loginBtn = PrimaryPushButton(rightPanel)
         self.loginBtn.setText("登录")
-        self.loginBtn.setFixedHeight(40)
+        self.loginBtn.setFixedHeight(36)
         self.loginBtn.clicked.connect(self.attemptLogin)
-        layout.addWidget(self.loginBtn)
+        rightLayout.addWidget(self.loginBtn)
 
         # 回车登录
         self.usernameEdit.returnPressed.connect(self.attemptLogin)
         self.passwordEdit.returnPressed.connect(self.attemptLogin)
 
-        layout.addStretch()
+        rightLayout.addStretch()
 
-    def applyStyleSheet(self):
-        """应用样式表"""
-        isDark = isDarkTheme()
+        mainLayout.addWidget(rightPanel, 1)
 
-        if isDark:
-            self.setStyleSheet("""
-                #leftPanel {
-                    background-color: #202020;
-                }
-                #rightPanel {
-                    background-color: #1a1a1a;
-                }
-                SubtitleLabel {
-                    color: #ffffff;
-                }
-                BodyLabel {
-                    color: #cccccc;
-                }
-                LineEdit {
-                    background-color: #2d2d2d;
-                    border: 1px solid #3d3d3d;
-                    border-radius: 4px;
-                    padding: 8px 12px;
-                    color: #ffffff;
-                }
-                LineEdit:focus {
-                    border: 2px solid #0078d4;
-                }
-                PrimaryPushButton {
-                    background-color: #0078d4;
-                    border-radius: 4px;
-                    font-size: 14px;
-                    font-weight: 600;
-                }
-                PrimaryPushButton:hover {
-                    background-color: #1084d8;
-                }
-                PrimaryPushButton:pressed {
-                    background-color: #006cbd;
-                }
-            """)
-        else:
-            self.setStyleSheet("""
-                #leftPanel {
-                    background-color: #0078d4;
-                }
-                #rightPanel {
-                    background-color: #ffffff;
-                }
-                SubtitleLabel {
-                    color: #1a1a1a;
-                }
-                BodyLabel {
-                    color: #666666;
-                }
-                LineEdit {
-                    background-color: #ffffff;
-                    border: 1px solid #d1d1d1;
-                    border-radius: 4px;
-                    padding: 8px 12px;
-                    color: #1a1a1a;
-                }
-                LineEdit:focus {
-                    border: 2px solid #0078d4;
-                }
-                PrimaryPushButton {
-                    background-color: #0078d4;
-                    border-radius: 4px;
-                    font-size: 14px;
-                    font-weight: 600;
-                }
-                PrimaryPushButton:hover {
-                    background-color: #1084d8;
-                }
-                PrimaryPushButton:pressed {
-                    background-color: #006cbd;
-                }
-            """)
+        # 左侧面板样式
+        leftPanel.setStyleSheet("""
+            #leftPanel {
+                background-color: rgba(0, 120, 212, 0.8);
+            }
+        """)
+
+        return page
 
     def attemptLogin(self):
         """尝试登录"""
