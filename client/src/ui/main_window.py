@@ -27,7 +27,11 @@ class MainWindow(FluentWindow):
 
         # 创建页面
         self.homePage = self._createHomePage()
-        self.experimentPage = self._createPlaceholderPage("实验管理", "实验管理功能开发中...")
+
+        # 实验管理页面
+        from ui.pages.experiment import ExperimentListPage
+        self.experimentPage = ExperimentListPage(self)
+
         self.evaluationPage = self._createPlaceholderPage("评测", "评测功能开发中...")
         self.reviewPage = self._createPlaceholderPage("评审", "评审功能开发中...")
         self.statisticsPage = self._createPlaceholderPage("统计", "统计功能开发中...")
@@ -236,8 +240,9 @@ class MainWindow(FluentWindow):
             position=NavigationItemPosition.BOTTOM
         )
 
-        # 默认显示首页
+        # 默认显示首页并设置导航选中状态
         self.switchTo(self.homePage)
+        self.navigationInterface.setCurrentItem('home')
 
     def _logout(self):
         """退出登录"""

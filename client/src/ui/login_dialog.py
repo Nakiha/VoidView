@@ -1,16 +1,41 @@
 """登录对话框 - Fluent Design 风格"""
 
-from PySide6.QtCore import Signal, Qt
+from PySide6.QtCore import Signal, Qt, QThread
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QSpacerItem, QSizePolicy
 from PySide6.QtGui import QFont
+from PySide6.QtSvgWidgets import QSvgWidget
 from qfluentwidgets import (
     SubtitleLabel, BodyLabel, LineEdit, PrimaryPushButton, PushButton,
     InfoBar, InfoBarPosition, FluentIcon, MessageBoxBase,
     isDarkTheme, TransparentToolButton, IconWidget
 )
 
-from api import auth_api, APIError
+from api import auth_api, APIError, ServerUnreachableError
 from models import UserResponse
+from utils import get_logo_path
+
+
+class LoginWorker(QThread):
+    """后台登录工作线程"""
+    success = Signal(object)  # 登录成功，传递 user 对象
+    error = Signal(str)       # 登录失败，传递错误消息
+
+    def __init__(self, username: str, password: str, parent=None):
+        super().__init__(parent)
+        self.username = username
+        self.password = password
+
+    def run(self):
+        """执行登录"""
+        try:
+            token_response = auth_api.login(self.username, self.password)
+            self.success.emit(token_response.user)
+        except APIError as e:
+            self.error.emit(e.message)
+        except ServerUnreachableError as e:
+            self.error.emit(e.message)
+        except Exception as e:
+            self.error.emit(f"登录失败: {str(e)}")
 
 
 class LoginDialog(QWidget):
@@ -22,6 +47,7 @@ class LoginDialog(QWidget):
         super().__init__(parent)
         self.current_user = None
         self._pending_user = None
+        self._login_worker = None  # 登录工作线程
         self.setupUI()
 
     def setupUI(self):
@@ -58,12 +84,19 @@ class LoginDialog(QWidget):
 
         layout.addStretch()
 
-        # Logo/图标
-        logoLabel = SubtitleLabel(self.leftPanel)
-        logoLabel.setText("◆")
-        logoLabel.setAlignment(Qt.AlignCenter)
-        logoLabel.setStyleSheet("font-size: 64px; color: #0078d4;")
-        layout.addWidget(logoLabel)
+        # Logo/图标 (使用 SVG)
+        logo_path = get_logo_path()
+        if logo_path.exists():
+            logoWidget = QSvgWidget(str(logo_path), self.leftPanel)
+            logoWidget.setFixedSize(80, 80)
+            layout.addWidget(logoWidget, alignment=Qt.AlignCenter)
+        else:
+            # 回退到文字
+            logoLabel = SubtitleLabel(self.leftPanel)
+            logoLabel.setText("◆")
+            logoLabel.setAlignment(Qt.AlignCenter)
+            logoLabel.setStyleSheet("font-size: 64px; color: #0078d4;")
+            layout.addWidget(logoLabel)
 
         # 应用名称
         nameLabel = SubtitleLabel(self.leftPanel)
@@ -228,6 +261,10 @@ class LoginDialog(QWidget):
 
     def attemptLogin(self):
         """尝试登录"""
+        # 如果正在登录，忽略
+        if self._login_worker and self._login_worker.isRunning():
+            return
+
         username = self.usernameEdit.text().strip()
         password = self.passwordEdit.text()
 
@@ -243,23 +280,49 @@ class LoginDialog(QWidget):
             )
             return
 
-        try:
-            token_response = auth_api.login(username, password)
-            self.current_user = token_response.user
-            self.loginSuccess.emit(self.current_user)
+        # 禁用登录按钮，显示加载状态
+        self.loginBtn.setEnabled(False)
+        self.loginBtn.setText("登录中...")
 
-        except APIError as e:
-            InfoBar.error(
-                title="登录失败",
-                content=e.message,
-                orient=Qt.Horizontal,
-                isClosable=True,
-                position=InfoBarPosition.TOP,
-                duration=3000,
-                parent=self
-            )
-            self.passwordEdit.clear()
-            self.passwordEdit.setFocus()
+        # 创建并启动登录工作线程
+        self._login_worker = LoginWorker(username, password)
+        self._login_worker.success.connect(self.onLoginSuccess)
+        self._login_worker.error.connect(self.onLoginError)
+        self._login_worker.start()
+
+    def onLoginSuccess(self, user):
+        """登录成功回调"""
+        self.current_user = user
+        self.resetLoginButton()
+        self.loginSuccess.emit(self.current_user)
+
+    def onLoginError(self, message: str):
+        """登录失败回调"""
+        self.resetLoginButton()
+        InfoBar.error(
+            title="登录失败",
+            content=message,
+            orient=Qt.Horizontal,
+            isClosable=True,
+            position=InfoBarPosition.TOP,
+            duration=3000,
+            parent=self
+        )
+        self.passwordEdit.clear()
+        self.passwordEdit.setFocus()
+
+    def resetLoginButton(self):
+        """重置登录按钮状态"""
+        self.loginBtn.setEnabled(True)
+        self.loginBtn.setText("登录")
+
+    def closeEvent(self, event):
+        """窗口关闭事件"""
+        # 确保工作线程被正确清理
+        if self._login_worker and self._login_worker.isRunning():
+            self._login_worker.quit()
+            self._login_worker.wait()
+        super().closeEvent(event)
 
     def clearForm(self):
         """清空表单"""

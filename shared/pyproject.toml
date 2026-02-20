@@ -5,6 +5,7 @@ description = "Shared code for VoidView client and server"
 requires-python = ">=3.10"
 dependencies = [
     "pydantic>=2.0",
+    "loguru>=0.7",
 ]
 
 [build-system]

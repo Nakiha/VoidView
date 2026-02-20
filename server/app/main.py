@@ -5,16 +5,32 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from voidview_shared import setup_logging, get_logger
+
 from app.config import settings
 from app.database import init_db
 from app.api.v1.router import api_router
 from app.services.user_service import UserService
 from app.database import AsyncSessionLocal
 
+# 初始化日志
+setup_logging(
+    app_name="voidview-server",
+    level="DEBUG" if settings.DEBUG else "INFO",
+    rotation="10 MB",
+    retention="7 days",
+    compression="zip",
+    dev_mode=True,
+)
+
+logger = get_logger()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
+    logger.info("VoidView 服务器启动中...")
+
     # 启动时初始化
     await init_db()
 
@@ -23,12 +39,14 @@ async def lifespan(app: FastAPI):
         user_service = UserService(db)
         root = await user_service.init_root_user()
         if root:
-            print(f"[VoidView] 已创建默认 root 账号")
+            logger.info("已创建默认 root 账号")
+
+    logger.info("VoidView 服务器启动完成")
 
     yield
 
     # 关闭时清理
-    pass
+    logger.info("VoidView 服务器关闭中...")
 
 
 app = FastAPI(
