@@ -358,11 +358,35 @@ async def get_experiment(
     current_user: dict = Depends(get_current_user)
 ):
     """获取实验详情"""
+    from app.storage.excel_store import excel_store
+
     service = ExperimentService()
     experiment = await service.get_by_id(experiment_id)
     if not experiment:
         raise NotFoundException("实验不存在")
-    return ExperimentResponse.model_validate(_convert_datetime(experiment))
+
+    # 构建模板完整路径
+    all_templates = {t["id"]: t for t in excel_store.list_templates()}
+    all_apps = {a["id"]: a for a in excel_store.list_apps()}
+    all_customers = {c["id"]: c for c in excel_store.list_customers()}
+
+    template_paths = {}
+    for tid, t in all_templates.items():
+        app = all_apps.get(t.get("app_id"))
+        if app:
+            customer = all_customers.get(app.get("customer_id"))
+            if customer:
+                template_paths[tid] = f"{customer['name']}/{app['name']}/{t['name']}"
+            else:
+                template_paths[tid] = f"未知客户/{app['name']}/{t['name']}"
+        else:
+            template_paths[tid] = f"未知/{t['name']}"
+
+    exp_data = _convert_datetime(experiment)
+    template_ids = excel_store.get_experiment_template_ids(experiment_id)
+    exp_data["template_names"] = [template_paths.get(tid, f"未知模板({tid})") for tid in template_ids]
+
+    return ExperimentResponse.model_validate(exp_data)
 
 
 @router.put("/{experiment_id}", response_model=ExperimentResponse)

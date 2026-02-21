@@ -207,7 +207,7 @@ class ExperimentListPage(QWidget):
                 # 操作按钮
                 actionWidget = QWidget()
                 actionLayout = QHBoxLayout(actionWidget)
-                actionLayout.setContentsMargins(8, 4, 8, 4)
+                actionLayout.setContentsMargins(0, 0, 0, 0)
 
                 detailBtn = PushButton(actionWidget)
                 detailBtn.setText("详情")

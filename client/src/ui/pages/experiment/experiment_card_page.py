@@ -132,15 +132,6 @@ class ExperimentCard(CardWidget):
         }
         return color_map.get(status, "#888888")
 
-    def _getStatusColor(self, status) -> str:
-        color_map = {
-            ExperimentStatus.DRAFT: "#888888",
-            ExperimentStatus.RUNNING: "#0078D4",
-            ExperimentStatus.COMPLETED: "#107C10",
-            ExperimentStatus.ARCHIVED: "#A80000",
-        }
-        return color_map.get(status, "#888888")
-
 
 class ExperimentCardPage(QWidget):
     """实验卡片页面 - 瀑布流布局"""
@@ -165,7 +156,7 @@ class ExperimentCardPage(QWidget):
         # 标题栏
         headerLayout = QHBoxLayout()
         title = SubtitleLabel(self)
-        title.setText("实验概览")
+        title.setText("实验总览")
         headerLayout.addWidget(title)
         headerLayout.addStretch()
 

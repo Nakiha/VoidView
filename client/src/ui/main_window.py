@@ -41,6 +41,7 @@ class MainWindow(FluentWindow):
         # 实验卡片页面
         from ui.pages.experiment.experiment_card_page import ExperimentCardPage
         self.experimentCardPage = ExperimentCardPage(self)
+        self.experimentCardPage.experimentClicked.connect(self._openExperimentDetail)
 
         self.evaluationPage = self._createPlaceholderPage("评测", "评测功能开发中...")
         self.reviewPage = self._createPlaceholderPage("评审", "评审功能开发中...")
@@ -68,6 +69,12 @@ class MainWindow(FluentWindow):
             (screen.width() - size.width()) // 2,
             (screen.height() - size.height()) // 2
         )
+
+    def _openExperimentDetail(self, experiment_id: int):
+        """打开实验详情窗口"""
+        from ui.pages.experiment.experiment_detail_window import ExperimentDetailWindow
+        window = ExperimentDetailWindow(experiment_id)  # 不传入 parent，使其成为独立窗口
+        window.show()
 
     def _createHomePage(self) -> QWidget:
         """创建首页"""
@@ -217,7 +224,7 @@ class MainWindow(FluentWindow):
         )
         self.navigationInterface.addItem(
             routeKey='experiment',
-            text='实验概览',
+            text='实验总览',
             icon=FluentIcon.FOLDER,
             onClick=lambda: self.switchTo(self.experimentCardPage)
         )

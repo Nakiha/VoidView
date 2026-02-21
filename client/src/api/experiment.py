@@ -140,9 +140,10 @@ class ExperimentAPI:
         return ExperimentResponse(**response)
 
     @staticmethod
-    def get(experiment_id: int) -> dict:
+    def get(experiment_id: int) -> ExperimentResponse:
         """获取实验详情"""
-        return api_client.get(f"/experiments/{experiment_id}")
+        response = api_client.get(f"/experiments/{experiment_id}")
+        return ExperimentResponse(**response)
 
     @staticmethod
     def update(experiment_id: int, data: ExperimentUpdateRequest) -> ExperimentResponse:
