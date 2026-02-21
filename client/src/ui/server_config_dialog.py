@@ -1,7 +1,7 @@
 """服务器配置对话框"""
 
 from PySide6.QtCore import Signal, Qt
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QSizePolicy
 from qfluentwidgets import (
     FluentWindow, SubtitleLabel, BodyLabel, LineEdit, PrimaryPushButton,
     PushButton, InfoBar, InfoBarPosition
@@ -74,6 +74,10 @@ class ServerConfigDialog(FluentWindow):
     def _createContentPage(self) -> QWidget:
         """创建内容页面"""
         page = QWidget()
+        # 固定页面大小，防止拖拽时布局抖动
+        page.setFixedSize(500, 272)  # 窗口高度320 - 标题栏48
+        page.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+
         layout = QVBoxLayout(page)
         layout.setContentsMargins(40, 30, 40, 30)
         layout.setSpacing(12)
@@ -82,6 +86,7 @@ class ServerConfigDialog(FluentWindow):
         titleLabel = SubtitleLabel(page)
         titleLabel.setText("无法连接到服务器")
         titleLabel.setStyleSheet("font-size: 18px; font-weight: 600;")
+        titleLabel.setFixedHeight(24)
         layout.addWidget(titleLabel)
 
         layout.addSpacing(4)
@@ -90,6 +95,7 @@ class ServerConfigDialog(FluentWindow):
         hintLabel = BodyLabel(page)
         hintLabel.setText("请检查服务器是否已启动，或修改服务器地址后重试。\n您也可以选择启动本地服务器模式。")
         hintLabel.setWordWrap(True)
+        hintLabel.setFixedHeight(40)
         layout.addWidget(hintLabel)
 
         layout.addSpacing(16)
@@ -97,6 +103,7 @@ class ServerConfigDialog(FluentWindow):
         # 服务器地址输入
         serverLabel = BodyLabel(page)
         serverLabel.setText("服务器地址")
+        serverLabel.setFixedHeight(20)
         layout.addWidget(serverLabel)
 
         self.serverEdit = LineEdit(page)
@@ -105,12 +112,12 @@ class ServerConfigDialog(FluentWindow):
         self.serverEdit.setFixedHeight(36)
         layout.addWidget(self.serverEdit)
 
-        layout.addStretch()
+        layout.addSpacing(16)
 
         # 本地模式按钮
         self.localModeBtn = PushButton(page)
         self.localModeBtn.setText("启动本地服务器")
-        self.localModeBtn.setFixedHeight(36)
+        self.localModeBtn.setFixedSize(420, 36)
         self.localModeBtn.clicked.connect(self.onLocalMode)
         layout.addWidget(self.localModeBtn)
 
@@ -123,13 +130,13 @@ class ServerConfigDialog(FluentWindow):
 
         self.exitBtn = PushButton(page)
         self.exitBtn.setText("退出")
-        self.exitBtn.setFixedWidth(90)
+        self.exitBtn.setFixedSize(90, 36)
         self.exitBtn.clicked.connect(self.onExit)
         buttonLayout.addWidget(self.exitBtn)
 
         self.retryBtn = PrimaryPushButton(page)
         self.retryBtn.setText("保存并重试")
-        self.retryBtn.setFixedWidth(110)
+        self.retryBtn.setFixedSize(110, 36)
         self.retryBtn.clicked.connect(self.onSaveAndRetry)
         buttonLayout.addWidget(self.retryBtn)
 

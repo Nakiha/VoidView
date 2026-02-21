@@ -9,16 +9,6 @@ SERVER_DIR = Path(__file__).parent.parent.resolve()
 PROJECT_ROOT = SERVER_DIR.parent
 
 
-def _get_default_data_dir() -> Path:
-    """获取默认数据目录"""
-    # 优先使用环境变量
-    if "VOIDVIEW_DATA_DIR" in os.environ:
-        return Path(os.environ["VOIDVIEW_DATA_DIR"])
-
-    # 默认使用项目 data 目录
-    return PROJECT_ROOT / "data"
-
-
 def _get_default_storage_dir() -> Path:
     """获取默认存储目录"""
     # 优先使用环境变量
@@ -36,9 +26,6 @@ class Settings(BaseSettings):
     APP_NAME: str = "VoidView API"
     APP_VERSION: str = "0.1.0"
     DEBUG: bool = True
-
-    # 数据库 - 支持环境变量覆盖
-    DATABASE_URL: str = ""
 
     # JWT
     JWT_SECRET: str = "voidview-secret-key-change-in-production"
@@ -60,11 +47,6 @@ class Settings(BaseSettings):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-
-        # 设置默认数据库路径
-        if not self.DATABASE_URL:
-            data_dir = _get_default_data_dir()
-            self.DATABASE_URL = f"sqlite+aiosqlite:///{data_dir / 'voidview.db'}"
 
         # 设置默认存储路径
         if not self.STORAGE_PATH:
@@ -100,8 +82,6 @@ class Settings(BaseSettings):
 settings = Settings()
 
 # 确保目录存在
-data_dir = _get_default_data_dir()
-data_dir.mkdir(parents=True, exist_ok=True)
 settings.storage_path.mkdir(parents=True, exist_ok=True)
 settings.screenshots_path.mkdir(parents=True, exist_ok=True)
 settings.attachments_path.mkdir(parents=True, exist_ok=True)

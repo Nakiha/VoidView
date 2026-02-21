@@ -15,7 +15,7 @@ import json
 from openpyxl import Workbook, load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
 
-from app.config import settings
+from app.config import settings, PROJECT_ROOT
 
 
 # 预设颜色列表
@@ -28,6 +28,16 @@ PRESET_COLORS = [
 def get_color_for_experiment(experiment_id: int) -> str:
     """根据实验ID获取点缀色"""
     return PRESET_COLORS[experiment_id % len(PRESET_COLORS)]
+
+
+def _get_data_dir() -> Path:
+    """获取数据目录路径"""
+    if settings.DEBUG:
+        # 开发模式：存储到项目根目录的 data 文件夹
+        return PROJECT_ROOT / "data" / "excel_data"
+    else:
+        # 生产模式：存储到配置的 storage_path
+        return settings.storage_path / "excel_data"
 
 
 class ExcelStore:
@@ -49,7 +59,7 @@ class ExcelStore:
             return
 
         self._initialized = True
-        self.data_dir = settings.storage_path / "excel_data"
+        self.data_dir = _get_data_dir()
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
         self._file_lock = threading.Lock()

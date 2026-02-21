@@ -4,7 +4,8 @@
       "Bash(pip show:*)",
       "Bash(python:*)",
       "Bash(pip install:*)",
-      "Bash(pyinstaller:*)"
+      "Bash(pyinstaller:*)",
+      "Bash(find:*)"
     ]
   }
 }

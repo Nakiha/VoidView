@@ -1,6 +1,7 @@
 """添加客户/APP/模板对话框"""
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QShortcut, QKeySequence
 from PySide6.QtWidgets import QWidget, QHBoxLayout
 from qfluentwidgets import (
     MessageBoxBase, SubtitleLabel, BodyLabel, LineEdit,
@@ -19,6 +20,13 @@ class AddEntityDialog(MessageBoxBase):
         self._customers = []
         self._apps = []
         self._loading = False  # 防止加载时触发信号
+
+        # 允许点击遮罩层关闭对话框
+        self.setClosableOnMaskClicked(True)
+
+        # ESC 键关闭对话框
+        self.escShortcut = QShortcut(QKeySequence(Qt.Key_Escape), self)
+        self.escShortcut.activated.connect(self.reject)
 
         # 标题
         self.titleLabel = SubtitleLabel(self)
@@ -41,11 +49,13 @@ class AddEntityDialog(MessageBoxBase):
         self.customerNameEdit = LineEdit(self)
         self.customerNameEdit.setPlaceholderText("新客户名称")
         self.customerNameEdit.setFixedWidth(150)
+        self.customerNameEdit.returnPressed.connect(self._createCustomer)
         customerLayout.addWidget(self.customerNameEdit)
 
         self.createCustomerBtn = PushButton(self)
         self.createCustomerBtn.setText("创建")
         self.createCustomerBtn.clicked.connect(self._createCustomer)
+        self.createCustomerBtn.setFocusPolicy(Qt.NoFocus)  # 不参与 Tab 导航
         customerLayout.addWidget(self.createCustomerBtn)
 
         customerWidget = QWidget()
@@ -68,11 +78,13 @@ class AddEntityDialog(MessageBoxBase):
         self.appNameEdit = LineEdit(self)
         self.appNameEdit.setPlaceholderText("新应用名称")
         self.appNameEdit.setFixedWidth(150)
+        self.appNameEdit.returnPressed.connect(self._createApp)
         appLayout.addWidget(self.appNameEdit)
 
         self.createAppBtn = PushButton(self)
         self.createAppBtn.setText("创建")
         self.createAppBtn.clicked.connect(self._createApp)
+        self.createAppBtn.setFocusPolicy(Qt.NoFocus)  # 不参与 Tab 导航
         appLayout.addWidget(self.createAppBtn)
 
         appWidget = QWidget()
@@ -94,22 +106,32 @@ class AddEntityDialog(MessageBoxBase):
         self.templateNameEdit = LineEdit(self)
         self.templateNameEdit.setPlaceholderText("新模板名称(如 hd5)")
         self.templateNameEdit.setFixedWidth(150)
+        self.templateNameEdit.returnPressed.connect(self._createTemplate)
         templateLayout.addWidget(self.templateNameEdit)
 
         self.createTemplateBtn = PushButton(self)
         self.createTemplateBtn.setText("创建")
         self.createTemplateBtn.clicked.connect(self._createTemplate)
+        self.createTemplateBtn.setFocusPolicy(Qt.NoFocus)  # 不参与 Tab 导航
         templateLayout.addWidget(self.createTemplateBtn)
 
         templateWidget = QWidget()
         templateWidget.setLayout(templateLayout)
         self.viewLayout.addWidget(templateWidget)
 
-        # 按钮
-        self.yesButton.setText("完成")
+        # 隐藏底部按钮区域（包括黑色背板）
+        self.buttonGroup.hide()
+        self.yesButton.hide()
         self.cancelButton.hide()
 
         self.widget.setMinimumWidth(500)
+
+        # 设置 Tab 顺序（按钮不参与，只在 ComboBox 和 LineEdit 之间切换）
+        self.setTabOrder(self.customerCombo, self.customerNameEdit)
+        self.setTabOrder(self.customerNameEdit, self.appCombo)
+        self.setTabOrder(self.appCombo, self.appNameEdit)
+        self.setTabOrder(self.appNameEdit, self.templateCombo)
+        self.setTabOrder(self.templateCombo, self.templateNameEdit)
 
         # 加载数据
         self._loadCustomers()
@@ -160,6 +182,73 @@ class AddEntityDialog(MessageBoxBase):
         finally:
             self._loading = False
 
+    def _loadCustomersAndSelect(self, name_to_select: str = None):
+        """加载客户列表并选中指定名称"""
+        self._loading = True
+        try:
+            self._customers = customer_api.list()
+            self.customerCombo.clear()
+            self.customerCombo.addItem("请选择客户")
+            select_index = 0
+            for i, c in enumerate(self._customers):
+                self.customerCombo.addItem(c.name)
+                if name_to_select and c.name == name_to_select:
+                    select_index = i + 1  # +1 因为有占位符
+            self.customerCombo.setCurrentIndex(select_index)
+            if select_index > 0:
+                # 触发加载该客户的应用
+                customer_id = self._customers[select_index - 1].id
+                apps = app_api.list(customer_id=customer_id)
+                self._loadApps(apps)
+            else:
+                self._loadApps([])
+        except APIError as e:
+            InfoBar.error(
+                title="加载失败",
+                content=e.message,
+                parent=self
+            )
+        finally:
+            self._loading = False
+
+    def _loadAppsAndSelect(self, apps, name_to_select: str = None):
+        """加载应用列表并选中指定名称"""
+        self._loading = True
+        try:
+            self._apps = apps
+            self.appCombo.clear()
+            self.appCombo.addItem("请选择应用")
+            select_index = 0
+            for i, a in enumerate(apps):
+                self.appCombo.addItem(a.name)
+                if name_to_select and a.name == name_to_select:
+                    select_index = i + 1
+            self.appCombo.setCurrentIndex(select_index)
+            if select_index > 0:
+                # 触发加载该应用的模板
+                app_id = self._apps[select_index - 1].id
+                templates = template_api.list(app_id=app_id)
+                self._loadTemplates(templates)
+            else:
+                self._loadTemplates([])
+        finally:
+            self._loading = False
+
+    def _loadTemplatesAndSelect(self, templates, name_to_select: str = None):
+        """加载模板列表并选中指定名称"""
+        self._loading = True
+        try:
+            self.templateCombo.clear()
+            self.templateCombo.addItem("请选择模板")
+            select_index = 0
+            for i, t in enumerate(templates):
+                self.templateCombo.addItem(t.name)
+                if name_to_select and t.name == name_to_select:
+                    select_index = i + 1
+            self.templateCombo.setCurrentIndex(select_index)
+        finally:
+            self._loading = False
+
     def _onCustomerSelected(self, index):
         """选择客户"""
         if self._loading:
@@ -197,11 +286,17 @@ class AddEntityDialog(MessageBoxBase):
             InfoBar.warning(title="提示", content="请输入客户名称", parent=self)
             return
 
+        # 前端检查同名
+        for c in self._customers:
+            if c.name == name:
+                InfoBar.warning(title="提示", content="客户名称已存在", parent=self)
+                return
+
         try:
             customer_api.create(CustomerCreateRequest(name=name))
             InfoBar.success(title="成功", content=f"客户 '{name}' 创建成功", parent=self)
             self.customerNameEdit.clear()
-            self._loadCustomers()
+            self._loadCustomersAndSelect(name)
         except APIError as e:
             InfoBar.error(title="创建失败", content=e.message, parent=self)
 
@@ -217,13 +312,19 @@ class AddEntityDialog(MessageBoxBase):
             InfoBar.warning(title="提示", content="请输入应用名称", parent=self)
             return
 
+        # 前端检查同名
+        for a in self._apps:
+            if a.name == name:
+                InfoBar.warning(title="提示", content="该客户下已存在同名应用", parent=self)
+                return
+
         try:
             customer_id = self._customers[customer_idx - 1].id
             app_api.create(AppCreateRequest(customer_id=customer_id, name=name))
             InfoBar.success(title="成功", content=f"应用 '{name}' 创建成功", parent=self)
             self.appNameEdit.clear()
             apps = app_api.list(customer_id=customer_id)
-            self._loadApps(apps)
+            self._loadAppsAndSelect(apps, name)
         except APIError as e:
             InfoBar.error(title="创建失败", content=e.message, parent=self)
 
@@ -239,13 +340,25 @@ class AddEntityDialog(MessageBoxBase):
             InfoBar.warning(title="提示", content="请输入模板名称", parent=self)
             return
 
+        # 获取当前模板列表用于同名检查
+        app_id = self._apps[app_idx - 1].id
         try:
-            app_id = self._apps[app_idx - 1].id
+            current_templates = template_api.list(app_id=app_id)
+        except APIError:
+            current_templates = []
+
+        # 前端检查同名
+        for t in current_templates:
+            if t.name == name:
+                InfoBar.warning(title="提示", content="该应用下已存在同名模板", parent=self)
+                return
+
+        try:
             template_api.create(TemplateCreateRequest(app_id=app_id, name=name))
             InfoBar.success(title="成功", content=f"模板 '{name}' 创建成功", parent=self)
             self.templateNameEdit.clear()
             templates = template_api.list(app_id=app_id)
-            self._loadTemplates(templates)
+            self._loadTemplatesAndSelect(templates, name)
         except APIError as e:
             InfoBar.error(title="创建失败", content=e.message, parent=self)
 

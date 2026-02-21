@@ -5,13 +5,12 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QFrame
 from qfluentwidgets import (
     SubtitleLabel, BodyLabel, CaptionLabel, CardWidget,
     PrimaryPushButton, PushButton, ComboBox, FluentIcon,
-    InfoBar, InfoBarPosition, SmoothScrollArea, isDarkTheme
+    InfoBar, InfoBarPosition, SmoothScrollArea, FlowLayout
 )
 
 from api import experiment_api, APIError
 from models.experiment import ExperimentResponse
 from voidview_shared import ExperimentStatus
-from ..components.color_badge import ColorBar
 from ..components.waterfall_layout import WaterfallLayout
 
 
@@ -26,50 +25,86 @@ class ExperimentCard(CardWidget):
         self.setupUI()
 
     def setupUI(self):
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 12, 16, 16)
+        layout.setSpacing(4)
 
-        # 左侧点缀色条
+        # 第一行：装饰色方块 + 标题
+        headerLayout = QHBoxLayout()
+        headerLayout.setSpacing(8)
+
+        # 装饰色圆角矩形
         color = self._experiment.color or "#0078D4"
-        color_bar = ColorBar(color, self)
-        layout.addWidget(color_bar)
+        colorDot = QFrame(self)
+        colorDot.setFixedSize(12, 12)
+        colorDot.setStyleSheet(f"""
+            background-color: {color};
+            border-radius: 4px;
+        """)
+        headerLayout.addWidget(colorDot)
 
-        # 右侧内容
-        contentWidget = QWidget(self)
-        contentLayout = QVBoxLayout(contentWidget)
-        contentLayout.setContentsMargins(16, 16, 16, 16)
-        contentLayout.setSpacing(8)
-
-        # 实验名称
-        nameLabel = SubtitleLabel(contentWidget)
+        # 标题
+        nameLabel = SubtitleLabel(self)
         nameLabel.setText(self._experiment.name)
         nameLabel.setWordWrap(True)
-        contentLayout.addWidget(nameLabel)
+        headerLayout.addWidget(nameLabel, 1)
+
+        layout.addLayout(headerLayout)
+
+        # 分隔线
+        separator = QFrame(self)
+        separator.setFixedHeight(1)
+        separator.setStyleSheet("background-color: rgba(255, 255, 255, 0.1);")
+        layout.addWidget(separator)
+
+        # 第二行：创建时间 + 状态
+        metaLayout = QHBoxLayout()
+        metaLayout.setSpacing(12)
+
+        # 创建时间
+        timeLabel = CaptionLabel(self)
+        if self._experiment.created_at:
+            timeLabel.setText(self._experiment.created_at.strftime("%Y-%m-%d %H:%M"))
+        timeLabel.setStyleSheet("color: rgba(255, 255, 255, 0.5);")
+        metaLayout.addWidget(timeLabel)
 
         # 状态标签
         statusText = self._getStatusText(self._experiment.status)
         statusColor = self._getStatusColor(self._experiment.status)
-        statusLabel = CaptionLabel(contentWidget)
+        statusLabel = CaptionLabel(self)
         statusLabel.setText(statusText)
-        statusLabel.setStyleSheet(f"color: {statusColor};")
-        contentLayout.addWidget(statusLabel)
+        statusLabel.setStyleSheet(f"""
+            color: {statusColor};
+            font-weight: 500;
+        """)
+        metaLayout.addWidget(statusLabel)
 
-        # 参考类型
-        refText = self._getReferenceText(self._experiment.reference_type)
-        refLabel = CaptionLabel(contentWidget)
-        refLabel.setText(f"参考: {refText}")
-        refLabel.setStyleSheet("color: rgba(255, 255, 255, 0.6);")
-        contentLayout.addWidget(refLabel)
+        metaLayout.addStretch()
+        layout.addLayout(metaLayout)
 
-        # 创建时间
-        timeLabel = CaptionLabel(contentWidget)
-        if self._experiment.created_at:
-            timeLabel.setText(self._experiment.created_at.strftime("%Y-%m-%d %H:%M"))
-        timeLabel.setStyleSheet("color: rgba(255, 255, 255, 0.4);")
-        contentLayout.addWidget(timeLabel)
+        # 模板列表（胶囊形状，高对比度）
+        if self._experiment.template_names:
+            templatesContainer = QWidget(self)
+            templatesLayout = FlowLayout(templatesContainer, needAni=False)
+            templatesLayout.setSpacing(6)
+            templatesLayout.setContentsMargins(0, 0, 0, 0)
 
-        layout.addWidget(contentWidget, 1)
+            for template_name in self._experiment.template_names:
+                # 使用 CaptionLabel 配合样式表实现高对比度胶囊
+                pill = CaptionLabel(templatesContainer)
+                pill.setText(template_name)
+                pill.setFixedHeight(24)
+                pill.setStyleSheet("""
+                    QLabel {
+                        color: rgba(255, 255, 255, 0.95);
+                        background-color: rgba(255, 255, 255, 0.15);
+                        padding: 2px 10px;
+                        border-radius: 12px;
+                    }
+                """)
+                templatesLayout.addWidget(pill)
+
+            layout.addWidget(templatesContainer)
 
         # 点击样式
         self.setCursor(Qt.PointingHandCursor)
@@ -97,14 +132,14 @@ class ExperimentCard(CardWidget):
         }
         return color_map.get(status, "#888888")
 
-    def _getReferenceText(self, refType) -> str:
-        ref_map = {
-            "supplier": "供应商对齐",
-            "self": "自对齐",
-            "new": "全新模板",
+    def _getStatusColor(self, status) -> str:
+        color_map = {
+            ExperimentStatus.DRAFT: "#888888",
+            ExperimentStatus.RUNNING: "#0078D4",
+            ExperimentStatus.COMPLETED: "#107C10",
+            ExperimentStatus.ARCHIVED: "#A80000",
         }
-        value = refType.value if hasattr(refType, 'value') else str(refType)
-        return ref_map.get(value, str(refType))
+        return color_map.get(status, "#888888")
 
 
 class ExperimentCardPage(QWidget):

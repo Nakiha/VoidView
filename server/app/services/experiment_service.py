@@ -63,8 +63,19 @@ class AppService:
         """根据ID获取应用"""
         return excel_store.get_app_by_id(app_id)
 
+    async def get_by_name(self, customer_id: int, name: str) -> Optional[Dict]:
+        """根据名称和应用ID获取应用"""
+        apps = excel_store.list_apps(customer_id=customer_id)
+        for a in apps:
+            if a["name"] == name:
+                return a
+        return None
+
     async def create(self, customer_id: int, name: str, description: str = None) -> Dict:
         """创建应用"""
+        existing = await self.get_by_name(customer_id, name)
+        if existing:
+            raise BadRequestException("该客户下已存在同名应用")
         return excel_store.create_app(customer_id=customer_id, name=name, description=description)
 
     async def update(self, app_id: int, **kwargs) -> Dict:
@@ -97,8 +108,19 @@ class TemplateService:
         """根据ID获取模板"""
         return excel_store.get_template_by_id(template_id)
 
+    async def get_by_name(self, app_id: int, name: str) -> Optional[Dict]:
+        """根据名称和应用ID获取模板"""
+        templates = excel_store.list_templates(app_id=app_id)
+        for t in templates:
+            if t["name"] == name:
+                return t
+        return None
+
     async def create(self, app_id: int, name: str, description: str = None) -> Dict:
         """创建模板"""
+        existing = await self.get_by_name(app_id, name)
+        if existing:
+            raise BadRequestException("该应用下已存在同名模板")
         return excel_store.create_template(app_id=app_id, name=name, description=description)
 
     async def update(self, template_id: int, **kwargs) -> Dict:

@@ -4,7 +4,6 @@ from fastapi import APIRouter, Depends, Query
 from datetime import datetime
 
 from app.api.deps import get_current_user
-from app.models.user import User
 from app.services.experiment_service import (
     CustomerService, AppService, TemplateService,
     ExperimentService, ExperimentGroupService, ObjectiveMetricsService
@@ -256,6 +255,8 @@ async def list_experiments(
     current_user: dict = Depends(get_current_user)
 ):
     """获取实验列表"""
+    from app.storage.excel_store import excel_store
+
     service = ExperimentService()
     experiments, total = await service.list_experiments(
         page=page,
@@ -263,8 +264,34 @@ async def list_experiments(
         template_id=template_id,
         status=status
     )
+
+    # 构建模板完整路径索引：template_id -> "客户/APP/模板"
+    all_templates = {t["id"]: t for t in excel_store.list_templates()}
+    all_apps = {a["id"]: a for a in excel_store.list_apps()}
+    all_customers = {c["id"]: c for c in excel_store.list_customers()}
+
+    template_paths = {}
+    for tid, t in all_templates.items():
+        app = all_apps.get(t.get("app_id"))
+        if app:
+            customer = all_customers.get(app.get("customer_id"))
+            if customer:
+                template_paths[tid] = f"{customer['name']}/{app['name']}/{t['name']}"
+            else:
+                template_paths[tid] = f"未知客户/{app['name']}/{t['name']}"
+        else:
+            template_paths[tid] = f"未知/{t['name']}"
+
+    # 为每个实验添加模板完整路径
+    items = []
+    for exp in experiments:
+        exp_data = _convert_datetime(exp)
+        template_ids = excel_store.get_experiment_template_ids(exp["id"])
+        exp_data["template_names"] = [template_paths.get(tid, f"未知模板({tid})") for tid in template_ids]
+        items.append(ExperimentResponse.model_validate(exp_data))
+
     return ExperimentListResponse(
-        items=[ExperimentResponse.model_validate(_convert_datetime(e)) for e in experiments],
+        items=items,
         total=total,
         page=page,
         page_size=page_size

@@ -110,6 +110,7 @@ class ExperimentResponse(BaseModel):
     status: ExperimentStatus
     reference_type: ReferenceType
     color: Optional[str] = None
+    template_names: List[str] = []  # 关联的模板名称列表
     created_at: datetime
     created_by: int
     updated_at: Optional[datetime] = None

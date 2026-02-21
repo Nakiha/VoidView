@@ -18,8 +18,10 @@ VoidView 是一个基于 PySide6 和 Windows 11 Fluent UI 风格的桌面应用�
 | Customer | 客户，提出转码需求的业务方 |
 | App | 应用，客户下的具体业务 |
 | Template | 模板，转码模板名称如 hd5、uhd |
-| Experiment | 实验，一次完整的转码参数调优任务 |
+| Experiment | 实验，一次完整的转码参数调优任务，带装饰色(color)用于视觉区分 |
 | ExperimentGroup | 实验组，实验中的单个测试配置 |
+
+**关系**: Customer 1:N App 1:N Template N:N Experiment（实验和模板是多对多关系）
 
 ## 技术栈
 
@@ -31,7 +33,7 @@ VoidView 是一个基于 PySide6 和 Windows 11 Fluent UI 风格的桌面应用�
 
 ### 服务端
 - **Web**: FastAPI + Uvicorn
-- **存储**: Excel (openpyxl) - 开发阶段
+- **存储**: Excel (openpyxl) - 便于开发调试
 - **认证**: JWT + bcrypt
 - **日志**: loguru
 
@@ -45,8 +47,15 @@ VoidView/
 ├── client/                 # PySide6 桌面应用
 │   ├── src/
 │   │   ├── app/           # 应用核心 (application, config, app_state)
-│   │   ├── ui/            # UI 层 (main_window, login_dialog, pages/)
-│   │   ├── api/           # API 客户端 (client, auth, experiment)
+│   │   ├── ui/            # UI 层
+│   │   │   ├── main_window.py
+│   │   │   ├── login_dialog.py
+│   │   │   └── pages/
+│   │   │       ├── customer_matrix/   # 客户矩阵页面（卡片式）
+│   │   │       ├── experiment/        # 实验卡片页面（瀑布流）
+│   │   │       ├── user_management/   # 用户管理
+│   │   │       └── components/        # 公共组件（ColorDot, WaterfallLayout）
+│   │   ├── api/           # API 客户端
 │   │   ├── models/        # Pydantic 数据模型
 │   │   └── utils/         # 工具函数
 │   └── VoidView.spec      # PyInstaller 打包配置
@@ -54,9 +63,9 @@ VoidView/
 ├── server/                # FastAPI 后端
 │   └── app/
 │       ├── api/v1/        # API 路由 (auth, users, experiments)
-│       ├── models/        # SQLAlchemy 模型
 │       ├── schemas/       # Pydantic 请求/响应模型
 │       ├── services/      # 业务逻辑
+│       ├── storage/       # Excel 存储层 (excel_store.py)
 │       └── core/          # 安全、异常处理
 │
 ├── shared/                # 客户端/服务端共享代码
@@ -70,22 +79,6 @@ VoidView/
     ├── build.py           # 打包客户端
     └── run.py             # 运行 client/server
 ```
-
-## 数据模型关系
-
-```
-User ←─┬─→ Experiment (创建人)
-       ├─→ SubjectiveResult (评测人)
-       └─→ Review (评审人)
-
-Customer 1:N App 1:N Template N:N Experiment
-Experiment 1:N ExperimentGroup
-ExperimentGroup 1:1 ObjectiveMetrics
-ExperimentGroup 1:N SubjectiveResult 1:N Screenshot
-ExperimentGroup 1:N Review
-```
-
-**注意**: Experiment 和 Template 是多对多关系（N:N），一个实验可以关联多个模板。
 
 ## 存储方式（开发阶段）
 
@@ -102,128 +95,65 @@ ExperimentGroup 1:N Review
 | experiments.xlsx | experiment_groups | 实验组数据 |
 | experiments.xlsx | objective_metrics | 客观指标数据 |
 
+## UI 页面
+
+### 客户矩阵页面 (CustomerMatrixPage)
+- 卡片式列表展示 Customer-App-Template-Experiment 关系
+- 支持多选模式（左侧显示复选框）
+- 实验标签显示装饰色方块，超过3个折叠显示
+- 悬浮工具栏：添加客户/APP/模板、批量添加实验
+
+### 实验卡片页面 (ExperimentCardPage)
+- 瀑布流布局展示实验卡片
+- 左侧装饰色条标识实验
+- 按状态筛选
+
+### 公共组件
+- `ColorDot`: 装饰色圆点
+- `ColorSquare`: 装饰色方块
+- `ColorBar`: 装饰色竖条
+- `WaterfallLayout`: 瀑布流布局
+
+## 装饰色系统
+
+实验自动分配装饰色，用于视觉区分：
+
+```python
+PRESET_COLORS = [
+    "#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FFEAA7",
+    "#DDA0DD", "#98D8C8", "#F7DC6F", "#BB8FCE", "#85C1E9"
+]
+
+def get_color_for_experiment(experiment_id: int) -> str:
+    return PRESET_COLORS[experiment_id % len(PRESET_COLORS)]
+```
+
 ## API 接口规范
 
-### 认证接口
+详细 API 文档见 [server/API.md](server/API.md)
+
+### 主要接口
 
 ```
+# 认证
 POST /api/v1/auth/login
-请求: { "username": string, "password": string }
-响应: { "access_token": string, "refresh_token": string, "token_type": "bearer", "user": UserResponse }
-
 POST /api/v1/auth/refresh
-请求: refresh_token: string (query param)
-响应: { "access_token": string, "refresh_token": string, "token_type": "bearer", "user": UserResponse }
+GET  /api/v1/auth/me
 
-GET /api/v1/auth/me
-响应: UserResponse
+# 用户管理（仅 root）
+GET/POST/PUT/DELETE /api/v1/users
+
+# 客户/应用/模板
+GET/POST/PUT/DELETE /api/v1/experiments/customers
+GET/POST/PUT/DELETE /api/v1/experiments/apps?customer_id={id}
+GET/POST/PUT/DELETE /api/v1/experiments/templates?app_id={id}
+
+# 实验
+GET  /api/v1/experiments?page=1&page_size=20&status={status}
+POST /api/v1/experiments  # 请求: { template_ids: int[], name, reference_type }
+GET  /api/v1/experiments/matrix  # 获取矩阵数据
+POST /api/v1/experiments/{id}/templates  # 关联模板
 ```
-
-### 用户接口（仅 root）
-
-```
-GET  /api/v1/users?page=1&page_size=20
-POST /api/v1/users
-请求: { "username": string, "password": string, "display_name": string, "role": "root"|"tester" }
-
-GET  /api/v1/users/{user_id}
-PUT  /api/v1/users/{user_id}
-请求: { "display_name"?: string, "is_active"?: bool }
-
-POST /api/v1/users/{user_id}/reset-password
-POST /api/v1/users/{user_id}/toggle-active
-```
-
-### 客户/应用/模板接口
-
-```
-GET    /api/v1/experiments/customers
-POST   /api/v1/experiments/customers
-GET    /api/v1/experiments/customers/{id}
-PUT    /api/v1/experiments/customers/{id}
-DELETE /api/v1/experiments/customers/{id}
-
-GET    /api/v1/experiments/apps?customer_id={id}
-POST   /api/v1/experiments/apps
-GET    /api/v1/experiments/apps/{id}
-PUT    /api/v1/experiments/apps/{id}
-DELETE /api/v1/experiments/apps/{id}
-
-GET    /api/v1/experiments/templates?app_id={id}
-POST   /api/v1/experiments/templates
-GET    /api/v1/experiments/templates/{id}
-PUT    /api/v1/experiments/templates/{id}
-DELETE /api/v1/experiments/templates/{id}
-```
-
-### 实验接口
-
-```
-GET  /api/v1/experiments?page=1&page_size=20&template_id={id}&status={status}
-POST /api/v1/experiments
-请求: { "template_ids": int[], "name": string, "reference_type": "new"|"supplier"|"self" }
-响应: ExperimentResponse（含 id, name, status, color, created_at, ...）
-
-GET    /api/v1/experiments/{id}
-PUT    /api/v1/experiments/{id}
-DELETE /api/v1/experiments/{id}
-
-# 模板关联
-POST   /api/v1/experiments/{id}/templates
-请求: { "template_ids": int[] }
-DELETE /api/v1/experiments/{id}/templates/{template_id}
-
-# 矩阵数据
-GET /api/v1/experiments/matrix
-响应: { "rows": MatrixRow[], "experiments": ExperimentBrief[] }
-```
-
-### 响应模型
-
-```typescript
-// ExperimentResponse
-{
-  id: number
-  name: string
-  status: "draft" | "running" | "completed" | "archived"
-  reference_type: "new" | "supplier" | "self"
-  color: string  // 点缀色，如 "#FF6B6B"
-  created_at: datetime
-  created_by: number
-  updated_at: datetime?
-}
-
-// MatrixRow
-{
-  customer_id: number
-  customer_name: string
-  app_id: number
-  app_name: string
-  template_id: number
-  template_name: string
-  experiments: { [experiment_id: number]: ExperimentBrief }
-}
-
-// ExperimentBrief
-{
-  id: number
-  name: string
-  status: string
-  color: string
-}
-```
-
-## 主要数据字段
-
-- **User**: username, password_hash, display_name, role(root/tester), is_active
-- **Customer**: name, contact, description
-- **App**: customer_id, name, description
-- **Template**: app_id, name, description
-- **Experiment**: name, status(draft/running/completed/archived), reference_type, color
-- **ExperimentGroup**: experiment_id, name, transcode_params, input_url, output_url, status
-- **ObjectiveMetrics**: group_id, bitrate, vmaf, psnr, ssim, cpu_usage, gpu_usage
-- **SubjectiveResult**: group_id, evaluator, evaluation_type, has_artifacts, blur_score
-- **Review**: group_id, reviewer, review_type, result(pass/reject)
 
 ## 快速开始
 
@@ -247,44 +177,77 @@ python scripts/build.py
 - Git: 分支命名 `feature/xxx`, `fix/xxx`；Commit 格式 `type(scope): description`
 - UI: Windows 11 Fluent Design, PyQt-Fluent-Widgets
 
-### UI 控件使用规范
+---
 
-**优先使用 PyQt-Fluent-Widgets (qfluentwidgets) 控件，避免使用 Qt 原生控件：**
+## ⚠️ CRITICAL: UI 控件使用规范
 
-| 场景 | 使用 | 避免使用 |
-|------|------|----------|
-| 主窗口(有导航) | FluentWindow | QMainWindow, QWidget |
-| 对话框(无导航) | FluentWidget | QDialog, QWidget, FluentWindow |
-| 简单弹窗 | MessageBoxBase | QDialog |
-| 按钮 | PrimaryPushButton, PushButton, ToolButton | QPushButton, QToolButton |
-| 输入框 | LineEdit, TextEdit, ComboBox | QLineEdit, QTextEdit, QComboBox |
-| 标签 | SubtitleLabel, BodyLabel, CaptionLabel | QLabel |
-| 布局容器 | CardWidget, ExpandLayout, FlowLayout | QWidget (作为容器时需设置透明背景) |
+**本项目必须使用 PyQt-Fluent-Widgets (qfluentwidgets)，禁止使用 Qt 原生控件！**
 
-**Mica 效果 (Windows 11 亚克力材质):**
+这是强制要求，不要因为"更简单"或"更熟悉"而使用 Qt 原生控件。整个项目的 UI 风格依赖于 PyQt-Fluent-Widgets 的 Fluent Design 风格，混用 Qt 原生控件会破坏视觉一致性。
+
+### ✅ 必须使用 (from qfluentwidgets)
+
+| 场景 | 必须使用 |
+|------|----------|
+| 主窗口(有导航) | FluentWindow |
+| 简单弹窗 | MessageBoxBase |
+| 按钮 | PrimaryPushButton, PushButton, TransparentToolButton, ToolButton |
+| 输入框 | LineEdit, TextEdit, ComboBox, SearchLineEdit |
+| 标签 | SubtitleLabel, BodyLabel, CaptionLabel, StrongBodyLabel |
+| 卡片 | CardWidget |
+| 滚动 | SmoothScrollArea |
+| 复选框 | CheckBox |
+| 图标 | FluentIcon |
+| 信息提示 | InfoBar, InfoBarPosition |
+| 布局 | ExpandLayout, FlowLayout |
+
+### ❌ 禁止使用 (from PySide6.QtWidgets)
+
+| 禁止使用 | 替代方案 |
+|----------|----------|
+| QMainWindow | FluentWindow |
+| QDialog | MessageBoxBase 或继承 FluentWidget |
+| QPushButton | PushButton, PrimaryPushButton |
+| QToolButton | ToolButton, TransparentToolButton |
+| QLineEdit | LineEdit |
+| QTextEdit | TextEdit |
+| QComboBox | ComboBox |
+| QLabel | BodyLabel, SubtitleLabel, CaptionLabel |
+| QScrollArea | SmoothScrollArea |
+| QCheckBox | CheckBox |
+
+### 代码示例
+
 ```python
-class MainWindow(FluentWindow):
-    def __init__(self):
-        super().__init__()
-        self.micaEnabled = True  # 启用 Mica 效果
+# ✅ 正确
+from qfluentwidgets import (
+    FluentWindow, CardWidget, PushButton, PrimaryPushButton,
+    LineEdit, ComboBox, BodyLabel, SubtitleLabel, CheckBox,
+    SmoothScrollArea, InfoBar, InfoBarPosition, FluentIcon,
+    MessageBoxBase
+)
+
+# ❌ 错误 - 不要这样做！
+from PySide6.QtWidgets import (
+    QMainWindow, QDialog, QPushButton, QLineEdit,
+    QLabel, QScrollArea  # 这些控件禁止使用
+)
 ```
 
-**注意事项:**
-- 使用 FluentWindow 时，不要设置自定义背景色样式表，否则会覆盖 Mica 效果
-- 所有窗口都应继承 FluentWindow 以保持一致的视觉风格
-- 使用 `isDarkTheme()` 判断当前主题，动态调整颜色
+### 特殊注意事项
 
-## 功能模块
+1. **CardWidget 信号冲突**: CardWidget 已有内置 `clicked` 信号，自定义点击信号时必须使用其他名称（如 `rowClicked`, `cardClicked`）
 
-1. **实验管理**: 创建/编辑实验、管理实验组
-2. **客观评测**: 录入和展示 VMAF/PSNR 等指标
-3. **主观评测**: 静帧评测(视频对比+截图标注)、盲测
-4. **评审流程**: 审核评测结果、决策通过/驳回
-5. **统计报表**: 仪表盘、趋势图表、Excel/Word 导出
+2. **FluentWindow 背景样式**: 使用 FluentWindow 时不要设置自定义背景色样式表，否则会破坏 Mica 效果
+
+3. **选中状态高亮**: 使用 `setProperty("selected", True)` + `style().polish()` 而非样式表边框，避免布局抖动
+
+4. **Mica 效果**: 在 FluentWindow 中设置 `self.micaEnabled = True` 启用 Windows 11 亚克力材质
+
+---
 
 ## 相关资源
 
 - [PySide6 文档](https://doc.qt.io/qtforpython/)
 - [PyQt-Fluent-Widgets](https://github.com/zhiyiYo/PyQt-Fluent-Widgets)
-- [SQLAlchemy 文档](https://docs.sqlalchemy.org/)
 - [FastAPI 文档](https://fastapi.tiangolo.com/)
