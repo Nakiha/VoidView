@@ -64,7 +64,16 @@ python scripts/run.py client # 启动客户端
 
 ---
 
-## ⚠️ UI 控件规范 (必读)
+## ⚠️ UI/UX 设计规范
+
+> 🎨 **涉及 UI 设计时，必须先阅读 `.claude/skills/ui-design.md`！**
+>
+> 该文档包含：
+> - Fluent Design → qfluentwidgets 控件映射表
+> - 标准布局模板（页面/卡片/表单/对话框）
+> - 间距规范（8px 网格系统）
+> - 主题适配写法
+> - 常见问题与检查清单
 
 **本项目必须使用 PyQt-Fluent-Widgets，禁止使用 Qt 原生控件！**
 
