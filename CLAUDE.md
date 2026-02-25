@@ -246,6 +246,121 @@ from PySide6.QtWidgets import (
 
 ---
 
+## 🎨 Fluent Design 规范
+
+本项目遵循 Microsoft Fluent Design System。所有 UI 设计必须符合以下原则：
+
+### 五大核心原则
+
+| 原则 | 说明 | 实现方式 |
+|------|------|----------|
+| **Light (光)** | 光影效果引导视觉焦点 | 使用 Mica 材质、阴影效果 |
+| **Depth (深度)** | 层次感创造空间关系 | z-index 层级、模糊背景、提升效果 |
+| **Motion (动效)** | 流畅自然的过渡 | qfluentwidgets 内置动画 |
+| **Material (材质)** | 真实质感 | Mica/Acrylic 背景材质 |
+| **Scale (缩放)** | 适应不同设备 | 响应式布局、自适应控件 |
+
+### 颜色系统
+
+#### 主题感知 (Theme-Aware)
+- **必须**支持 Light 和 Dark 两种主题
+- 使用 `isDarkTheme()` 检测当前主题
+- 使用 `setTheme(Theme.AUTO)` 自动跟随系统
+- **禁止**硬编码颜色值（如 `color: #000000`）
+
+#### 层次与提升 (Layering & Elevation)
+- 深色 = 较不重要的背景表面
+- 浅色/亮色 = 重要的前景元素
+- 背景色层级：`背景 < Layer 1 < Layer 2 < ...`
+
+#### 强调色 (Accent Color)
+- 品牌蓝: `#0078d4` (通过 `setThemeColor("#0078d4")` 设置)
+- 用于：主要按钮、选中状态、链接、进度条
+- 使用要克制，仅强调重要元素
+
+### 主题适配规范
+
+#### ✅ 正确做法
+
+```python
+from qfluentwidgets import (
+    BodyLabel, StrongBodyLabel, isDarkTheme, setTheme, Theme
+)
+from PySide6.QtGui import QFont, QColor
+
+# 1. 使用主题感知的标签组件
+title = StrongBodyLabel("标题")  # 自动适配文字颜色
+
+# 2. 在 paintEvent 中动态选择颜色
+def paintEvent(self, event):
+    painter = QPainter(self)
+    if isDarkTheme():
+        color = QColor("#1a1a2e")  # 暗色模式背景
+    else:
+        color = QColor("#0078d4")  # 亮色模式品牌色
+    painter.fillRect(self.rect(), color)
+
+# 3. 使用 QFont 设置字体大小，而非样式表
+label = BodyLabel("文字")
+font = label.font()
+font.setPointSize(14)
+font.setWeight(QFont.DemiBold)
+label.setFont(font)
+```
+
+#### ❌ 错误做法
+
+```python
+# 硬编码颜色 - 暗色模式下看不清！
+label.setStyleSheet("color: black;")  # ❌
+label.setStyleSheet("font-size: 14px; color: #333;")  # ❌
+
+# 使用 Qt 原生控件
+from PySide6.QtWidgets import QLabel  # ❌
+label = QLabel("文字")  # ❌
+```
+
+### 布局规范
+
+#### 间距 (Spacing)
+| 场景 | 推荐间距 |
+|------|----------|
+| 表单项之间 | 16-24px |
+| 相关元素组 | 8-12px |
+| 页面边距 | 32-48px |
+| 按钮高度 | 36-40px |
+| 输入框高度 | 36-40px |
+
+#### 字体大小 (Typography)
+| 组件 | 字号 | 字重 |
+|------|------|------|
+| 页面大标题 | 28pt | DemiBold |
+| 区块标题 | 18-20pt | DemiBold |
+| 表单标签 | 默认 | Regular |
+| 正文内容 | 默认 | Regular |
+| 说明文字 | 11-12pt | Regular |
+
+### 登录界面设计规范
+
+参考 `login_dialog.py` 的实现：
+
+1. **左右分栏布局**
+   - 左侧：品牌面板（渐变背景 + Logo + 产品名）
+   - 右侧：登录表单（清晰的输入层次）
+
+2. **主题适配**
+   - 左侧面板在 `paintEvent` 中根据 `isDarkTheme()` 动态绘制渐变
+   - 所有文字使用 `StrongBodyLabel` / `BodyLabel` 自动适配颜色
+
+3. **视觉层次**
+   - 欢迎标题 > 提示文字 > 表单标签 > 输入框
+   - 使用 `StrongBodyLabel` 强调重要文字
+
+4. **材质效果**
+   - 启用 `micaEnabled = True` 使用 Windows 11 Mica 效果
+
+---
+
 ## 相关资源
 
 - [PySide6 文档](https://doc.qt.io/qtforpython/)
