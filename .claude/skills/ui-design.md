@@ -155,30 +155,25 @@ def create_form(self):
 
 ### 4. 对话框
 
+> 📦 **对话框详细指南请参阅 `.claude/skills/dialog.md`**
+
+基础结构：
+
 ```python
 from qfluentwidgets import MessageBoxBase, SubtitleLabel, LineEdit
-from PySide6.QtWidgets import QVBoxLayout
 
 class MyDialog(MessageBoxBase):
-    """自定义对话框 - 继承 MessageBoxBase"""
-    
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.titleLabel = SubtitleLabel("对话框标题", self)
-        
-        # 内容区域
-        self.inputField = LineEdit(self)
-        self.inputField.setPlaceholderText("请输入...")
-        
-        # 添加到视图布局
+        self.setClosableOnMaskClicked(True)  # 必须设置！
+
+        self.titleLabel = SubtitleLabel("标题", self)
         self.viewLayout.addWidget(self.titleLabel)
-        self.viewLayout.addWidget(self.inputField)
-        
-        # 设置按钮文字
-        self.yesButton.setText("确定")
+
+        # 内容控件...
+
+        self.yesButton.setText("确定")  # 必须中文！
         self.cancelButton.setText("取消")
-        
-        # 设置最小宽度
         self.widget.setMinimumWidth(400)
 ```
 
