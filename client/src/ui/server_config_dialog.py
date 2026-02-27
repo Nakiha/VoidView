@@ -79,7 +79,7 @@ class ServerConfigDialog(FluentWindow):
         page.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
 
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(40, 30, 40, 30)
+        layout.setContentsMargins(40, 0, 40, 30)
         layout.setSpacing(12)
 
         # 标题

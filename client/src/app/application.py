@@ -149,7 +149,7 @@ class ConnectingSplashScreen(FluentWindow):
         super().__init__(parent)
         self._check_worker = None
 
-        self.setFixedSize(400, 180)
+        self.setFixedSize(400, 200)
         self.setWindowTitle("VoidView - 视频质量评测系统")
 
         # 启用 Mica 效果
@@ -205,8 +205,11 @@ class ConnectingSplashScreen(FluentWindow):
         """创建内容页面"""
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(32, 24, 32, 24)
-        layout.setSpacing(16)
+        layout.setContentsMargins(32, 16, 32, 24)
+        layout.setSpacing(12)
+
+        # 添加顶部弹性空间，让内容居中
+        layout.addStretch()
 
         # Logo
         logo_path = get_logo_path()
@@ -219,13 +222,15 @@ class ConnectingSplashScreen(FluentWindow):
         # 状态文字
         self.statusLabel = SubtitleLabel(page)
         self.statusLabel.setText("正在连接服务器...")
-        self.statusLabel.setStyleSheet("font-size: 14px;")
         layout.addWidget(self.statusLabel, alignment=Qt.AlignCenter)
 
         # 加载指示器
         self.progressRing = IndeterminateProgressRing(page)
         self.progressRing.setFixedSize(28, 28)
         layout.addWidget(self.progressRing, alignment=Qt.AlignCenter)
+
+        # 添加底部弹性空间
+        layout.addStretch()
 
         return page
 
