@@ -83,6 +83,48 @@ class ExcelStore:
         experiments_file = self.data_dir / "experiments.xlsx"
         if not experiments_file.exists():
             self._create_experiments_file(experiments_file)
+        else:
+            # 迁移：检查是否需要添加 template_versions 表
+            self._migrate_add_template_versions(experiments_file)
+
+    def _migrate_add_template_versions(self, filepath: Path):
+        """迁移：添加 template_versions 表"""
+        with self._file_lock:
+            wb = load_workbook(filepath)
+            changed = False
+
+            # 添加 template_versions 表
+            if "template_versions" not in wb.sheetnames:
+                ws = wb.create_sheet("template_versions")
+                headers = ["id", "experiment_id", "template_id", "name", "notes", "template_content", "order_index", "created_at", "updated_at"]
+                for col, header in enumerate(headers, 1):
+                    ws.cell(row=1, column=col, value=header)
+                changed = True
+
+            # 迁移 experiment_templates 表：添加 notes 列
+            ws_links = wb["experiment_templates"]
+            headers = [ws_links.cell(row=1, column=col).value for col in range(1, ws_links.max_column + 1)]
+            if "notes" not in headers:
+                # 添加 notes 列
+                notes_col = len(headers) + 1
+                ws_links.cell(row=1, column=notes_col, value="notes")
+                changed = True
+
+            # 迁移 template_versions 表：添加 notes 和 template_content 列
+            if "template_versions" in wb.sheetnames:
+                ws_versions = wb["template_versions"]
+                headers = [ws_versions.cell(row=1, column=col).value for col in range(1, ws_versions.max_column + 1)]
+                if "notes" not in headers:
+                    notes_col = len(headers) + 1
+                    ws_versions.cell(row=1, column=notes_col, value="notes")
+                    changed = True
+                if "template_content" not in headers:
+                    content_col = ws_versions.max_column + 1
+                    ws_versions.cell(row=1, column=content_col, value="template_content")
+                    changed = True
+
+            if changed:
+                wb.save(filepath)
 
     def _create_users_file(self, filepath: Path):
         """创建用户文件"""
@@ -146,7 +188,7 @@ class ExcelStore:
 
         # 实验-模板关联表
         ws_links = wb.create_sheet("experiment_templates")
-        headers = ["experiment_id", "template_id"]
+        headers = ["experiment_id", "template_id", "notes"]
         for col, header in enumerate(headers, 1):
             ws_links.cell(row=1, column=col, value=header)
 
@@ -164,6 +206,12 @@ class ExcelStore:
                    "detailed_report_url", "created_at", "updated_at"]
         for col, header in enumerate(headers, 1):
             ws_metrics.cell(row=1, column=col, value=header)
+
+        # 模板版本表
+        ws_versions = wb.create_sheet("template_versions")
+        headers = ["id", "experiment_id", "template_id", "name", "notes", "template_content", "order_index", "created_at", "updated_at"]
+        for col, header in enumerate(headers, 1):
+            ws_versions.cell(row=1, column=col, value=header)
 
         wb.save(filepath)
 
@@ -686,6 +734,46 @@ class ExcelStore:
 
         self._save_workbook(wb, "experiments.xlsx")
 
+    def get_experiment_template_notes(self, experiment_id: int, template_id: int) -> Optional[str]:
+        """获取实验-模板关联的备注"""
+        wb = self._load_workbook("experiments.xlsx")
+        ws_links = wb["experiment_templates"]
+
+        headers = [ws_links.cell(row=1, column=col).value for col in range(1, ws_links.max_column + 1)]
+        notes_col = headers.index("notes") + 1 if "notes" in headers else None
+
+        for row in range(2, ws_links.max_row + 1):
+            if (ws_links.cell(row=row, column=1).value == experiment_id and
+                ws_links.cell(row=row, column=2).value == template_id):
+                if notes_col:
+                    return ws_links.cell(row=row, column=notes_col).value or ""
+                return ""
+
+        return None
+
+    def update_experiment_template_notes(self, experiment_id: int, template_id: int, notes: str) -> bool:
+        """更新实验-模板关联的备注"""
+        wb = self._load_workbook("experiments.xlsx")
+        ws_links = wb["experiment_templates"]
+
+        headers = [ws_links.cell(row=1, column=col).value for col in range(1, ws_links.max_column + 1)]
+
+        # 确保 notes 列存在
+        if "notes" not in headers:
+            notes_col = ws_links.max_column + 1
+            ws_links.cell(row=1, column=notes_col, value="notes")
+        else:
+            notes_col = headers.index("notes") + 1
+
+        for row in range(2, ws_links.max_row + 1):
+            if (ws_links.cell(row=row, column=1).value == experiment_id and
+                ws_links.cell(row=row, column=2).value == template_id):
+                ws_links.cell(row=row, column=notes_col, value=notes)
+                self._save_workbook(wb, "experiments.xlsx")
+                return True
+
+        return False
+
     # ============ 矩阵数据方法 ============
 
     def get_matrix_data(self) -> tuple[List[Dict], List[Dict]]:
@@ -764,6 +852,101 @@ class ExcelStore:
             })
 
         return rows, experiments
+
+    # ============ 模板版本方法 ============
+
+    def list_template_versions(self, experiment_id: int, template_id: int) -> List[Dict]:
+        """获取实验-模板的版本列表"""
+        wb = self._load_workbook("experiments.xlsx")
+        ws = wb["template_versions"]
+
+        versions = []
+        for row in range(2, ws.max_row + 1):
+            version = self._row_to_dict(ws, row)
+            if (version and
+                version.get("experiment_id") == experiment_id and
+                version.get("template_id") == template_id):
+                versions.append(version)
+
+        # 按 order_index 排序
+        versions.sort(key=lambda x: x.get("order_index", 0))
+        return versions
+
+    def get_template_version_by_id(self, version_id: int) -> Optional[Dict]:
+        """根据ID获取模板版本"""
+        wb = self._load_workbook("experiments.xlsx")
+        ws = wb["template_versions"]
+
+        row = self._find_row_by_id(ws, version_id)
+        if row:
+            return self._row_to_dict(ws, row)
+        return None
+
+    def create_template_version(
+        self, experiment_id: int, template_id: int, name: str, order_index: int = 0,
+        notes: str = "", template_content: str = ""
+    ) -> Dict:
+        """创建模板版本"""
+        wb = self._load_workbook("experiments.xlsx")
+        ws = wb["template_versions"]
+
+        new_id = self._get_next_id(ws)
+        new_row = ws.max_row + 1
+
+        ws.cell(row=new_row, column=1, value=new_id)
+        ws.cell(row=new_row, column=2, value=experiment_id)
+        ws.cell(row=new_row, column=3, value=template_id)
+        ws.cell(row=new_row, column=4, value=name)
+        ws.cell(row=new_row, column=5, value=notes)
+        ws.cell(row=new_row, column=6, value=template_content)
+        ws.cell(row=new_row, column=7, value=order_index)
+        ws.cell(row=new_row, column=8, value=datetime.now().isoformat())
+        ws.cell(row=new_row, column=9, value=None)
+
+        self._save_workbook(wb, "experiments.xlsx")
+        return self._row_to_dict(ws, new_row)
+
+    def update_template_version(self, version_id: int, **kwargs) -> Optional[Dict]:
+        """更新模板版本"""
+        wb = self._load_workbook("experiments.xlsx")
+        ws = wb["template_versions"]
+
+        row = self._find_row_by_id(ws, version_id)
+        if not row:
+            return None
+
+        headers = [ws.cell(row=1, column=col).value for col in range(1, ws.max_column + 1)]
+        for key, value in kwargs.items():
+            if key in headers:
+                col = headers.index(key) + 1
+                ws.cell(row=row, column=col, value=value)
+
+        # 更新 updated_at
+        updated_at_col = headers.index("updated_at") + 1
+        ws.cell(row=row, column=updated_at_col, value=datetime.now().isoformat())
+
+        self._save_workbook(wb, "experiments.xlsx")
+        return self._row_to_dict(ws, row)
+
+    def delete_template_version(self, version_id: int) -> bool:
+        """删除模板版本"""
+        wb = self._load_workbook("experiments.xlsx")
+        ws = wb["template_versions"]
+
+        row = self._find_row_by_id(ws, version_id)
+        if not row:
+            return False
+
+        ws.delete_rows(row)
+        self._save_workbook(wb, "experiments.xlsx")
+        return True
+
+    def get_next_version_order_index(self, experiment_id: int, template_id: int) -> int:
+        """获取下一个版本的排序索引"""
+        versions = self.list_template_versions(experiment_id, template_id)
+        if not versions:
+            return 0
+        return max(v.get("order_index", 0) for v in versions) + 1
 
 
 # 全局实例

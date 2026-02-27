@@ -20,6 +20,8 @@ from .experiment import (
     ExperimentGroupResponse, ExperimentGroupWithMetricsResponse,
     # ObjectiveMetrics
     ObjectiveMetricsBase, ObjectiveMetricsCreate, ObjectiveMetricsUpdate, ObjectiveMetricsResponse,
+    # TemplateVersion
+    TemplateVersionBase, TemplateVersionCreate, TemplateVersionUpdate, TemplateVersionResponse,
     # Common
     ExperimentListResponse, PaginatedResponse, UserBriefResponse
 )
@@ -42,6 +44,8 @@ __all__ = [
     "ExperimentGroupResponse", "ExperimentGroupWithMetricsResponse",
     # ObjectiveMetrics
     "ObjectiveMetricsBase", "ObjectiveMetricsCreate", "ObjectiveMetricsUpdate", "ObjectiveMetricsResponse",
+    # TemplateVersion
+    "TemplateVersionBase", "TemplateVersionCreate", "TemplateVersionUpdate", "TemplateVersionResponse",
     # Common
     "ExperimentListResponse", "PaginatedResponse", "UserBriefResponse"
 ]

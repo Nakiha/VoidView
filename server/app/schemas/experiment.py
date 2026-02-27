@@ -154,6 +154,7 @@ class ExperimentResponse(ExperimentBase):
     status: ExperimentStatus
     color: Optional[str] = None
     template_names: List[str] = []  # 关联的模板名称列表
+    template_ids: List[int] = []  # 关联的模板ID列表
     created_at: datetime
     created_by: int
     updated_at: Optional[datetime] = None
@@ -336,6 +337,41 @@ class PaginatedResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+# ============ TemplateVersion ============
+
+class TemplateVersionBase(BaseModel):
+    """模板版本基础模型"""
+    name: str = Field(..., min_length=1, max_length=100)
+
+
+class TemplateVersionCreate(TemplateVersionBase):
+    """创建模板版本请求"""
+    notes: Optional[str] = ""
+    template_content: Optional[str] = ""
+
+
+class TemplateVersionUpdate(BaseModel):
+    """更新模板版本请求"""
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    notes: Optional[str] = None
+    template_content: Optional[str] = None
+
+
+class TemplateVersionResponse(TemplateVersionBase):
+    """模板版本响应"""
+    id: int
+    experiment_id: int
+    template_id: int
+    notes: str = ""
+    template_content: str = ""
+    order_index: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
 
 
 # 更新 forward references

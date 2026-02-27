@@ -1,5 +1,6 @@
 """API 客户端封装"""
 
+import logging
 import httpx
 from typing import TypeVar, Type, Optional, Any
 from pydantic import BaseModel
@@ -8,6 +9,9 @@ from app.config import user_config
 
 T = TypeVar("T", bound=BaseModel)
 
+# API 客户端日志
+logger = logging.getLogger("api_client")
+
 
 class APIError(Exception):
     """API 错误"""
@@ -15,6 +19,8 @@ class APIError(Exception):
         self.message = message
         self.status_code = status_code
         self.detail = detail
+        # 记录错误日志
+        logger.error(f"API Error [{status_code}]: {message}, detail={detail}")
         super().__init__(self.message)
 
 
@@ -22,6 +28,8 @@ class ServerUnreachableError(Exception):
     """服务端不可达错误"""
     def __init__(self, message: str = "无法连接到服务器，请检查网络连接或服务器状态"):
         self.message = message
+        # 记录错误日志
+        logger.error(f"Server Unreachable: {message}")
         super().__init__(self.message)
 
 
@@ -96,10 +104,20 @@ class APIClient:
         if response.status_code >= 400:
             try:
                 error_data = response.json()
-                message = error_data.get("detail", f"请求失败: {response.status_code}")
-            except:
+                # 尝试获取更详细的错误信息
+                if isinstance(error_data.get("detail"), dict):
+                    # Pydantic 验证错误格式
+                    detail_info = error_data["detail"]
+                    if "msg" in detail_info:
+                        message = detail_info["msg"]
+                    else:
+                        message = str(detail_info)
+                else:
+                    message = error_data.get("detail", f"请求失败: {response.status_code}")
+            except Exception:
                 message = f"请求失败: {response.status_code}"
-            raise APIError(message, response.status_code, error_data if 'error_data' in dir() else None)
+                error_data = None
+            raise APIError(message, response.status_code, error_data)
 
         return response.json()
 

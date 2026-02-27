@@ -111,6 +111,7 @@ class ExperimentResponse(BaseModel):
     reference_type: ReferenceType
     color: Optional[str] = None
     template_names: List[str] = []  # 关联的模板名称列表
+    template_ids: List[int] = []  # 关联的模板ID列表
     created_at: datetime
     created_by: int
     updated_at: Optional[datetime] = None
@@ -277,3 +278,35 @@ class ObjectiveMetricsUpdateRequest(BaseModel):
     cpu_usage: Optional[float] = Field(None, ge=0, le=100)
     gpu_usage: Optional[float] = Field(None, ge=0, le=100)
     detailed_report_url: Optional[str] = None
+
+
+# ============ TemplateVersion ============
+
+class TemplateVersionResponse(BaseModel):
+    """模板版本响应模型"""
+    id: int
+    experiment_id: int
+    template_id: int
+    name: str
+    notes: str = ""
+    template_content: str = ""
+    order_index: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class TemplateVersionCreateRequest(BaseModel):
+    """创建模板版本请求"""
+    name: str = Field(..., min_length=1, max_length=100)
+    notes: Optional[str] = ""
+    template_content: Optional[str] = ""
+
+
+class TemplateVersionUpdateRequest(BaseModel):
+    """更新模板版本请求"""
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    notes: Optional[str] = None
+    template_content: Optional[str] = None

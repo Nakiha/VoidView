@@ -17,24 +17,31 @@ logger = get_logger()
 ANSI_ESCAPE_RE = re.compile(r'\x1b\[[0-9;]*m')
 
 
-def find_free_port(start_port: int = 8000, max_attempts: int = 100) -> int:
-    """查找可用端口
+def find_free_port(min_port: int = 1024, max_port: int = 65535, max_attempts: int = 100) -> int:
+    """查找可用端口（随机起始）
 
     Args:
-        start_port: 起始端口
+        min_port: 最小端口号
+        max_port: 最大端口号
         max_attempts: 最大尝试次数
 
     Returns:
         可用的端口号
     """
-    for port in range(start_port, start_port + max_attempts):
+    import random
+
+    # 随机选择起始端口
+    start_port = random.randint(min_port, max_port)
+
+    for i in range(max_attempts):
+        port = min_port + (start_port - min_port + i) % (max_port - min_port + 1)
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.bind(('127.0.0.1', port))
                 return port
         except OSError:
             continue
-    raise RuntimeError(f"无法找到可用端口 (尝试范围: {start_port}-{start_port + max_attempts})")
+    raise RuntimeError(f"无法找到可用端口 (尝试了 {max_attempts} 个随机端口)")
 
 
 def _log_stream(stream, log_file: Optional[TextIO] = None):

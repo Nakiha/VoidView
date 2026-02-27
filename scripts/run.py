@@ -20,6 +20,15 @@ def run_server():
     subprocess.run([sys.executable, "-m", "uvicorn", "app.main:app", "--reload"], cwd=project_root / "server")
 
 
+def check_shared_module() -> bool:
+    """检查 voidview_shared 模块是否可用"""
+    try:
+        import voidview_shared  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
 def run_client_dev():
     """启动客户端 (开发模式)"""
     project_root = Path(__file__).parent.parent
@@ -27,6 +36,12 @@ def run_client_dev():
 
     if not client_main.exists():
         print(f"Error: {client_main} not found!")
+        sys.exit(1)
+
+    # 检查依赖是否安装
+    if not check_shared_module():
+        print("Error: voidview_shared module not found!")
+        print("Please run 'python scripts/install.py' first to install dependencies.")
         sys.exit(1)
 
     print("Starting VoidView client (dev mode)...")

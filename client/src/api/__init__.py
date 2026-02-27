@@ -8,7 +8,8 @@ from .experiment import (
     app_api, AppAPI,
     template_api, TemplateAPI,
     experiment_api, ExperimentAPI,
-    metrics_api, ObjectiveMetricsAPI
+    metrics_api, ObjectiveMetricsAPI,
+    version_api, TemplateVersionAPI
 )
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     "template_api", "TemplateAPI",
     "experiment_api", "ExperimentAPI",
     "metrics_api", "ObjectiveMetricsAPI",
+    "version_api", "TemplateVersionAPI",
 ]

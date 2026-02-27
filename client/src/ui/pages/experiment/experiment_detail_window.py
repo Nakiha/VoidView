@@ -289,7 +289,7 @@ class AddTemplateToExperimentDialog(MessageBoxBase):
             self.customerCombo.setCurrentIndex(0)
             self._loadApps([])
         except APIError as e:
-            InfoBar.error(title="加载失败", content=e.message, parent=self)
+            InfoBar.error(title="加载失败", content=e.message, parent=self, duration=5000)
         finally:
             self._loading = False
 
@@ -377,7 +377,7 @@ class AddTemplateToExperimentDialog(MessageBoxBase):
             return
         # 检查是否选择了已添加的模板
         if index in self._existing_template_indices:
-            InfoBar.warning(title="提示", content="该模板已添加到实验中", parent=self)
+            InfoBar.warning(title="提示", content="该模板已添加到实验中", parent=self, duration=5000)
             self.templateCombo.setCurrentIndex(0)
             self._selected_template_id = None
             return
@@ -389,7 +389,7 @@ class AddTemplateToExperimentDialog(MessageBoxBase):
     def _addTemplateToExperiment(self):
         """添加模板到实验"""
         if self._selected_template_id is None:
-            InfoBar.warning(title="提示", content="请选择一个模板", parent=self)
+            InfoBar.warning(title="提示", content="请选择一个模板", parent=self, duration=5000)
             return
 
         try:
@@ -401,7 +401,7 @@ class AddTemplateToExperimentDialog(MessageBoxBase):
             InfoBar.success(title="成功", content="模板已添加到实验", parent=self)
             self.accept()
         except APIError as e:
-            InfoBar.error(title="添加失败", content=e.message, parent=self)
+            InfoBar.error(title="添加失败", content=e.message, parent=self, duration=5000)
 
     def validate(self) -> bool:
         return True
@@ -552,7 +552,13 @@ class ExperimentDetailWindow(FluentWindow):
         """模板选中事件"""
         if 0 <= index < len(self._experiment.template_names):
             template_name = self._experiment.template_names[index]
-            self.templateDetailPanel.setTemplate(template_name)
+            template_id = self._experiment.template_ids[index] if index < len(self._experiment.template_ids) else None
+            if template_id:
+                self.templateDetailPanel.setTemplate(
+                    experiment_id=self._experiment_id,
+                    template_id=template_id,
+                    template_name=template_name
+                )
 
     def _onAddTemplateRequested(self):
         """请求添加模板"""

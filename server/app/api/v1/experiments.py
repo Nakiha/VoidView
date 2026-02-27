@@ -6,7 +6,8 @@ from datetime import datetime
 from app.api.deps import get_current_user
 from app.services.experiment_service import (
     CustomerService, AppService, TemplateService,
-    ExperimentService, ExperimentGroupService, ObjectiveMetricsService
+    ExperimentService, ExperimentGroupService, ObjectiveMetricsService,
+    TemplateVersionService
 )
 from app.schemas.experiment import (
     CustomerCreate, CustomerUpdate, CustomerResponse,
@@ -18,6 +19,7 @@ from app.schemas.experiment import (
     MatrixRow, MatrixResponse,
     ExperimentGroupCreate, ExperimentGroupResponse,
     ObjectiveMetricsCreate, ObjectiveMetricsResponse,
+    TemplateVersionCreate, TemplateVersionUpdate, TemplateVersionResponse,
 )
 from app.core.exceptions import NotFoundException
 
@@ -25,12 +27,16 @@ router = APIRouter(prefix="/experiments", tags=["实验管理"])
 
 
 def _convert_datetime(data: dict) -> dict:
-    """转换 datetime 字段为字符串"""
+    """转换 datetime 字段为字符串，处理 None 值"""
     result = dict(data)
     for key in ['created_at', 'updated_at', 'last_login_at']:
         if key in result and result[key] is not None:
             if isinstance(result[key], str):
                 result[key] = datetime.fromisoformat(result[key])
+    # 处理可能为 None 的字符串字段
+    for key in ['notes', 'template_content']:
+        if key in result and result[key] is None:
+            result[key] = ""
     return result
 
 
@@ -385,6 +391,7 @@ async def get_experiment(
     exp_data = _convert_datetime(experiment)
     template_ids = excel_store.get_experiment_template_ids(experiment_id)
     exp_data["template_names"] = [template_paths.get(tid, f"未知模板({tid})") for tid in template_ids]
+    exp_data["template_ids"] = template_ids
 
     return ExperimentResponse.model_validate(exp_data)
 
@@ -506,3 +513,103 @@ async def create_or_update_objective_metrics(
         detailed_report_url=data.detailed_report_url
     )
     return ObjectiveMetricsResponse.model_validate(metrics)
+
+
+# ============ TemplateVersion API ============
+
+@router.get("/{experiment_id}/templates/{template_id}/versions", response_model=list[TemplateVersionResponse])
+async def list_template_versions(
+    experiment_id: int,
+    template_id: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """获取实验-模板的版本列表"""
+    service = TemplateVersionService()
+    versions = await service.list_by_experiment_template(experiment_id, template_id)
+    return [TemplateVersionResponse.model_validate(_convert_datetime(v)) for v in versions]
+
+
+@router.post("/{experiment_id}/templates/{template_id}/versions", response_model=TemplateVersionResponse)
+async def create_template_version(
+    experiment_id: int,
+    template_id: int,
+    data: TemplateVersionCreate,
+    current_user: dict = Depends(get_current_user)
+):
+    """创建模板版本"""
+    # 验证实验和模板的关联关系
+    exp_service = ExperimentService()
+    experiment = await exp_service.get_by_id(experiment_id)
+    if not experiment:
+        raise NotFoundException("实验不存在")
+
+    # 验证模板是否关联到该实验
+    from app.storage.excel_store import excel_store
+    template_ids = excel_store.get_experiment_template_ids(experiment_id)
+    if template_id not in template_ids:
+        raise NotFoundException("该模板未关联到此实验")
+
+    service = TemplateVersionService()
+    version = await service.create(
+        experiment_id=experiment_id,
+        template_id=template_id,
+        name=data.name,
+        notes=data.notes or "",
+        template_content=data.template_content or ""
+    )
+    return TemplateVersionResponse.model_validate(_convert_datetime(version))
+
+
+@router.put("/versions/{version_id}", response_model=TemplateVersionResponse)
+async def update_template_version(
+    version_id: int,
+    data: TemplateVersionUpdate,
+    current_user: dict = Depends(get_current_user)
+):
+    """更新模板版本"""
+    service = TemplateVersionService()
+    update_data = data.model_dump(exclude_unset=True)
+    version = await service.update(version_id, **update_data)
+    return TemplateVersionResponse.model_validate(_convert_datetime(version))
+
+
+@router.delete("/versions/{version_id}")
+async def delete_template_version(
+    version_id: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """删除模板版本"""
+    service = TemplateVersionService()
+    await service.delete(version_id)
+    return {"message": "删除成功"}
+
+
+# ============ ExperimentTemplate Notes API ============
+
+@router.get("/{experiment_id}/templates/{template_id}/notes")
+async def get_experiment_template_notes(
+    experiment_id: int,
+    template_id: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """获取实验-模板关联的备注"""
+    from app.storage.excel_store import excel_store
+    notes = excel_store.get_experiment_template_notes(experiment_id, template_id)
+    if notes is None:
+        raise NotFoundException("实验-模板关联不存在")
+    return {"notes": notes}
+
+
+@router.put("/{experiment_id}/templates/{template_id}/notes")
+async def update_experiment_template_notes(
+    experiment_id: int,
+    template_id: int,
+    data: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """更新实验-模板关联的备注"""
+    from app.storage.excel_store import excel_store
+    notes = data.get("notes", "")
+    if not excel_store.update_experiment_template_notes(experiment_id, template_id, notes):
+        raise NotFoundException("实验-模板关联不存在")
+    return {"message": "更新成功", "notes": notes}

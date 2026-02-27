@@ -2,6 +2,7 @@
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QFrame
+from PySide6.QtGui import QShowEvent
 from qfluentwidgets import (
     SubtitleLabel, BodyLabel, CaptionLabel, CardWidget,
     PrimaryPushButton, PushButton, ComboBox, FluentIcon,
@@ -146,7 +147,6 @@ class ExperimentCardPage(QWidget):
         self._total = 0
 
         self.setupUI()
-        self.loadExperiments()
 
     def setupUI(self):
         layout = QVBoxLayout(self)
@@ -269,3 +269,8 @@ class ExperimentCardPage(QWidget):
                 self.waterfallLayout.setColumns(3)
             else:
                 self.waterfallLayout.setColumns(4)
+
+    def showEvent(self, event: QShowEvent):
+        """页面显示时刷新数据"""
+        super().showEvent(event)
+        self.loadExperiments()

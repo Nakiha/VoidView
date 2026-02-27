@@ -285,3 +285,51 @@ class ObjectiveMetricsService:
     async def create_or_update(self, group_id: int, **kwargs) -> Dict:
         """创建或更新客观指标"""
         return {"id": 1, "group_id": group_id, **kwargs}
+
+
+class TemplateVersionService:
+    """模板版本服务"""
+
+    def __init__(self, db=None):
+        pass
+
+    async def get_by_id(self, version_id: int) -> Optional[Dict]:
+        """根据ID获取版本"""
+        return excel_store.get_template_version_by_id(version_id)
+
+    async def list_by_experiment_template(
+        self, experiment_id: int, template_id: int
+    ) -> List[Dict]:
+        """获取实验-模板的版本列表"""
+        return excel_store.list_template_versions(experiment_id, template_id)
+
+    async def create(
+        self, experiment_id: int, template_id: int, name: str,
+        notes: str = "", template_content: str = ""
+    ) -> Dict:
+        """创建版本"""
+        # 获取下一个排序索引
+        order_index = excel_store.get_next_version_order_index(experiment_id, template_id)
+        return excel_store.create_template_version(
+            experiment_id=experiment_id,
+            template_id=template_id,
+            name=name,
+            order_index=order_index,
+            notes=notes,
+            template_content=template_content
+        )
+
+    async def update(self, version_id: int, **kwargs) -> Dict:
+        """更新版本"""
+        version = await self.get_by_id(version_id)
+        if not version:
+            raise NotFoundException("版本不存在")
+        result = excel_store.update_template_version(version_id, **kwargs)
+        if not result:
+            raise NotFoundException("版本不存在")
+        return result
+
+    async def delete(self, version_id: int) -> None:
+        """删除版本"""
+        if not excel_store.delete_template_version(version_id):
+            raise NotFoundException("版本不存在")

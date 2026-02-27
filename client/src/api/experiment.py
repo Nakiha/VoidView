@@ -13,6 +13,7 @@ from models.experiment import (
     ExperimentGroupUpdateRequest,
     ObjectiveMetricsResponse, ObjectiveMetricsCreateRequest, ObjectiveMetricsUpdateRequest,
     MatrixResponse,
+    TemplateVersionResponse, TemplateVersionCreateRequest, TemplateVersionUpdateRequest,
 )
 
 
@@ -226,9 +227,48 @@ class ObjectiveMetricsAPI:
         return ObjectiveMetricsResponse(**response)
 
 
+class TemplateVersionAPI:
+    """模板版本 API"""
+
+    @staticmethod
+    def list(experiment_id: int, template_id: int) -> List[TemplateVersionResponse]:
+        """获取实验-模板的版本列表"""
+        response = api_client.get(f"/experiments/{experiment_id}/templates/{template_id}/versions")
+        return [TemplateVersionResponse(**item) for item in response]
+
+    @staticmethod
+    def create(experiment_id: int, template_id: int, data: TemplateVersionCreateRequest) -> TemplateVersionResponse:
+        """创建模板版本"""
+        response = api_client.post(f"/experiments/{experiment_id}/templates/{template_id}/versions", data)
+        return TemplateVersionResponse(**response)
+
+    @staticmethod
+    def update(version_id: int, data: TemplateVersionUpdateRequest) -> TemplateVersionResponse:
+        """更新模板版本"""
+        response = api_client.put(f"/experiments/versions/{version_id}", data)
+        return TemplateVersionResponse(**response)
+
+    @staticmethod
+    def delete(version_id: int) -> dict:
+        """删除模板版本"""
+        return api_client.delete(f"/experiments/versions/{version_id}")
+
+    @staticmethod
+    def get_notes(experiment_id: int, template_id: int) -> str:
+        """获取实验-模板关联的备注"""
+        response = api_client.get(f"/experiments/{experiment_id}/templates/{template_id}/notes")
+        return response.get("notes", "")
+
+    @staticmethod
+    def update_notes(experiment_id: int, template_id: int, notes: str) -> dict:
+        """更新实验-模板关联的备注"""
+        return api_client.put(f"/experiments/{experiment_id}/templates/{template_id}/notes", {"notes": notes})
+
+
 # 便捷访问
 customer_api = CustomerAPI()
 app_api = AppAPI()
 template_api = TemplateAPI()
 experiment_api = ExperimentAPI()
 metrics_api = ObjectiveMetricsAPI()
+version_api = TemplateVersionAPI()
