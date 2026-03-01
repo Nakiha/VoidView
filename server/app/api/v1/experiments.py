@@ -613,3 +613,35 @@ async def update_experiment_template_notes(
     if not excel_store.update_experiment_template_notes(experiment_id, template_id, notes):
         raise NotFoundException("实验-模板关联不存在")
     return {"message": "更新成功", "notes": notes}
+
+
+# ============ ExperimentTemplate InputFiles API ============
+
+@router.get("/{experiment_id}/templates/{template_id}/input-files")
+async def get_experiment_template_input_files(
+    experiment_id: int,
+    template_id: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """获取实验-模板关联的输入文件"""
+    from app.storage.excel_store import excel_store
+    data = excel_store.get_experiment_template_input_files(experiment_id, template_id)
+    if data is None:
+        raise NotFoundException("实验-模板关联不存在")
+    return data
+
+
+@router.put("/{experiment_id}/templates/{template_id}/input-files")
+async def update_experiment_template_input_files(
+    experiment_id: int,
+    template_id: int,
+    data: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """更新实验-模板关联的输入文件"""
+    from app.storage.excel_store import excel_store
+    storage_path = data.get("storage_path", "")
+    input_files = data.get("input_files", [])
+    if not excel_store.update_experiment_template_input_files(experiment_id, template_id, storage_path, input_files):
+        raise NotFoundException("实验-模板关联不存在")
+    return {"message": "更新成功", "storage_path": storage_path, "input_files": input_files}

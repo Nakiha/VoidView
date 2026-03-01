@@ -163,7 +163,10 @@ class APIClient:
     def put(self, path: str, body: BaseModel = None, data: dict = None) -> dict:
         """PUT 请求"""
         try:
-            json_data = body.model_dump() if body else data
+            if body:
+                json_data = body.model_dump() if hasattr(body, 'model_dump') else body
+            else:
+                json_data = data
             response = self.client.put(path, json=json_data)
             return self._handle_response(response)
         except (httpx.ConnectError, httpx.TimeoutException, httpx.NetworkError) as e:

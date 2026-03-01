@@ -101,13 +101,22 @@ class ExcelStore:
                     ws.cell(row=1, column=col, value=header)
                 changed = True
 
-            # 迁移 experiment_templates 表：添加 notes 列
+            # 迁移 experiment_templates 表：添加 notes, storage_path, input_files 列
             ws_links = wb["experiment_templates"]
             headers = [ws_links.cell(row=1, column=col).value for col in range(1, ws_links.max_column + 1)]
             if "notes" not in headers:
-                # 添加 notes 列
                 notes_col = len(headers) + 1
                 ws_links.cell(row=1, column=notes_col, value="notes")
+                headers.append("notes")
+                changed = True
+            if "storage_path" not in headers:
+                storage_col = len(headers) + 1
+                ws_links.cell(row=1, column=storage_col, value="storage_path")
+                headers.append("storage_path")
+                changed = True
+            if "input_files" not in headers:
+                files_col = len(headers) + 1
+                ws_links.cell(row=1, column=files_col, value="input_files")
                 changed = True
 
             # 迁移 template_versions 表：添加 notes 和 template_content 列
@@ -769,6 +778,86 @@ class ExcelStore:
             if (ws_links.cell(row=row, column=1).value == experiment_id and
                 ws_links.cell(row=row, column=2).value == template_id):
                 ws_links.cell(row=row, column=notes_col, value=notes)
+                self._save_workbook(wb, "experiments.xlsx")
+                return True
+
+        return False
+
+    def get_experiment_template_input_files(self, experiment_id: int, template_id: int) -> Optional[Dict]:
+        """获取实验-模板关联的输入文件信息"""
+        import json
+        import shutil
+        wb = self._load_workbook("experiments.xlsx")
+        ws_links = wb["experiment_templates"]
+
+        headers = [ws_links.cell(row=1, column=col).value for col in range(1, ws_links.max_column + 1)]
+        storage_col = headers.index("storage_path") + 1 if "storage_path" in headers else None
+        files_col = headers.index("input_files") + 1 if "input_files" in headers else None
+
+        for row in range(2, ws_links.max_row + 1):
+            if (ws_links.cell(row=row, column=1).value == experiment_id and
+                ws_links.cell(row=row, column=2).value == template_id):
+                storage_path = ""
+                input_files = []
+                free_space = None
+                if storage_col:
+                    storage_path = ws_links.cell(row=row, column=storage_col).value or ""
+                if files_col:
+                    files_str = ws_links.cell(row=row, column=files_col).value or "[]"
+                    try:
+                        input_files = json.loads(files_str)
+                    except:
+                        input_files = []
+
+                # 如果没有设置存储路径，使用服务端默认存储路径
+                if not storage_path:
+                    storage_path = str(settings.storage_path)
+
+                # 计算可用空间（跨平台：Windows 和 Linux 都支持 shutil.disk_usage）
+                if storage_path:
+                    try:
+                        # 确保路径存在，如果不存在则使用父目录
+                        check_path = Path(storage_path)
+                        while not check_path.exists() and check_path != check_path.parent:
+                            check_path = check_path.parent
+                        if check_path.exists():
+                            usage = shutil.disk_usage(check_path)
+                            free_space = usage.free
+                    except Exception:
+                        free_space = None
+
+                return {"storage_path": storage_path, "input_files": input_files, "free_space": free_space}
+
+        return None
+
+    def update_experiment_template_input_files(self, experiment_id: int, template_id: int, storage_path: str, input_files: List[Dict]) -> bool:
+        """更新实验-模板关联的输入文件信息"""
+        import json
+        wb = self._load_workbook("experiments.xlsx")
+        ws_links = wb["experiment_templates"]
+
+        headers = [ws_links.cell(row=1, column=col).value for col in range(1, ws_links.max_column + 1)]
+
+        # 确保 storage_path 和 input_files 列存在
+        if "storage_path" not in headers:
+            storage_col = ws_links.max_column + 1
+            ws_links.cell(row=1, column=storage_col, value="storage_path")
+            headers.append("storage_path")
+        else:
+            storage_col = headers.index("storage_path") + 1
+
+        if "input_files" not in headers:
+            files_col = ws_links.max_column + 1
+            ws_links.cell(row=1, column=files_col, value="input_files")
+            headers.append("input_files")
+        else:
+            files_col = headers.index("input_files") + 1
+
+        for row in range(2, ws_links.max_row + 1):
+            if (ws_links.cell(row=row, column=1).value == experiment_id and
+                ws_links.cell(row=row, column=2).value == template_id):
+                ws_links.cell(row=row, column=storage_col, value=storage_path)
+                ws_links.cell(row=row, column=files_col, value=json.dumps(input_files, ensure_ascii=False))
                 self._save_workbook(wb, "experiments.xlsx")
                 return True
 

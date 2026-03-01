@@ -317,6 +317,7 @@ class TemplateDetailPanel(QWidget):
         """添加基础信息标签页"""
         self._basicInfoPage = BasicInfoPage(self)
         self._basicInfoPage.notesChanged.connect(self._onBasicNotesChanged)
+        self._basicInfoPage.filesChanged.connect(self._onFilesChanged)
         self.stackedWidget.addWidget(self._basicInfoPage)
         self.tabBar.addTab("基础信息")
         self._current_index = 0
@@ -331,6 +332,11 @@ class TemplateDetailPanel(QWidget):
             self._basic_notes = notes
         except APIError as e:
             InfoBar.error(title="保存失败", content=e.message, parent=self, duration=5000)
+
+    def _onFilesChanged(self, files: list):
+        """输入文件列表变化"""
+        # TODO: 实现文件上传到服务器的逻辑
+        pass
 
     def _onTabClicked(self, index: int):
         """标签点击"""

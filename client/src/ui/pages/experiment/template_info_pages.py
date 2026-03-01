@@ -2,62 +2,97 @@
 
 from typing import Optional
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QWidget, QVBoxLayout
-from qfluentwidgets import SubtitleLabel
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QSizePolicy
+from qfluentwidgets import SubtitleLabel, SmoothScrollArea
 
 from .editable_field import EditableField
+from .input_file_field import InputFileField
 from models.experiment import TemplateVersionResponse
 
 
-class BasicInfoPage(QWidget):
+class BasicInfoPage(SmoothScrollArea):
     """基础信息标签页
 
-    显示模板的基本备注信息
+    显示模板的基本备注信息和输入文件，支持滚动
     """
 
     notesChanged = Signal(str)  # 备注变化信号
+    filesChanged = Signal(list)  # 文件列表变化信号
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._experiment_id: Optional[int] = None
         self._template_id: Optional[int] = None
         self._notes: str = ""
+        self._storage_path: str = ""
         self.setupUI()
 
     def setupUI(self):
         # 页面背景透明
         self.setAttribute(Qt.WA_TranslucentBackground, True)
-        self.setStyleSheet("background-color: transparent;")
+        self.setStyleSheet("background-color: transparent; border: none;")
+        self.setWidgetResizable(True)
 
-        layout = QVBoxLayout(self)
+        # 滚动内容容器
+        self.contentWidget = QWidget(self)
+        self.contentWidget.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.contentWidget.setStyleSheet("background-color: transparent;")
+        self.setWidget(self.contentWidget)
+
+        layout = QVBoxLayout(self.contentWidget)
         # 收窄边距，左侧对齐标签页页签文本（约16px）
         layout.setContentsMargins(16, 12, 16, 12)
-        layout.setSpacing(12)
+        layout.setSpacing(16)
 
-        # 备注字段（移除重复的"基础信息"标题）
+        # 备注字段
         self.notesField = EditableField(
             title="备注",
             content="",
             is_formatted=False,
             placeholder="暂无备注，点击编辑按钮添加...",
-            parent=self
+            parent=self.contentWidget
         )
         self.notesField.contentChanged.connect(self._onNotesChanged)
         layout.addWidget(self.notesField)
 
-        layout.addStretch()
+        # 输入文件组件（最小高度在 resize 时动态设置）
+        self.inputFileField = InputFileField(
+            storage_path="",
+            parent=self.contentWidget
+        )
+        self.inputFileField.filesChanged.connect(self._onFilesChanged)
+        layout.addWidget(self.inputFileField)
 
-    def set_data(self, experiment_id: int, template_id: int, notes: str = ""):
+    def resizeEvent(self, event):
+        """窗口大小变化时，动态调整输入文件组件的最小高度"""
+        super().resizeEvent(event)
+        # 输入文件组件的最小高度 = 标签页高度 - 边距
+        # 这样总内容高度 = 备注高度 + 标签页高度，超出可视区域
+        # 用户滚动下去后，文件列表刚好填满整个标签页
+        margins = self.contentWidget.layout().contentsMargins()
+        page_height = self.height() - margins.top() - margins.bottom()
+        self.inputFileField.setMinimumHeight(max(page_height, 200))
+
+    def set_data(self, experiment_id: int, template_id: int, notes: str = "", storage_path: str = ""):
         """设置数据"""
         self._experiment_id = experiment_id
         self._template_id = template_id
         self._notes = notes or ""
+        self._storage_path = storage_path
         self.notesField.setContent(self._notes)
+
+        # 设置实验和模板ID，并从后端加载输入文件
+        self.inputFileField.set_experiment_template(experiment_id, template_id)
+        self.inputFileField.load_from_backend()
 
     def _onNotesChanged(self, content: str):
         """备注变化"""
         self._notes = content
         self.notesChanged.emit(content)
+
+    def _onFilesChanged(self, files: list):
+        """文件列表变化"""
+        self.filesChanged.emit(files)
 
 
 class VersionTabPage(QWidget):

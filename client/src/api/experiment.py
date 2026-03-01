@@ -264,6 +264,24 @@ class TemplateVersionAPI:
         """更新实验-模板关联的备注"""
         return api_client.put(f"/experiments/{experiment_id}/templates/{template_id}/notes", {"notes": notes})
 
+    @staticmethod
+    def get_input_files(experiment_id: int, template_id: int) -> dict:
+        """获取实验-模板关联的输入文件"""
+        response = api_client.get(f"/experiments/{experiment_id}/templates/{template_id}/input-files")
+        return {
+            "storage_path": response.get("storage_path", ""),
+            "input_files": response.get("input_files", []),
+            "free_space": response.get("free_space")  # 可能为 None
+        }
+
+    @staticmethod
+    def update_input_files(experiment_id: int, template_id: int, storage_path: str, input_files: list) -> dict:
+        """更新实验-模板关联的输入文件"""
+        return api_client.put(
+            f"/experiments/{experiment_id}/templates/{template_id}/input-files",
+            {"storage_path": storage_path, "input_files": input_files}
+        )
+
 
 # 便捷访问
 customer_api = CustomerAPI()

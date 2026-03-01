@@ -188,7 +188,7 @@ class EditableField(QWidget):
         )
 
         if dialog.exec():
-            new_content = dialog.get_content()
+            new_content = dialog.get_content().strip()  # 去掉前后多余的空行
 
             # 如果是格式化文本且有格式错误，显示警告
             if self._is_formatted and dialog.has_format_error():
