@@ -1,6 +1,6 @@
 """实验管理 API - Excel 存储版本"""
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, UploadFile, File
 from datetime import datetime
 
 from app.api.deps import get_current_user
@@ -621,13 +621,20 @@ async def update_experiment_template_notes(
 async def get_experiment_template_input_files(
     experiment_id: int,
     template_id: int,
+    target: str = Query("private", description="上传目标: shared(共享) 或 private(私有)"),
     current_user: dict = Depends(get_current_user)
 ):
     """获取实验-模板关联的输入文件"""
     from app.storage.excel_store import excel_store
-    data = excel_store.get_experiment_template_input_files(experiment_id, template_id)
-    if data is None:
-        raise NotFoundException("实验-模板关联不存在")
+
+    if target == "shared":
+        data = excel_store.get_experiment_shared_input_files(experiment_id)
+        if data is None:
+            raise NotFoundException("实验不存在")
+    else:
+        data = excel_store.get_experiment_template_input_files(experiment_id, template_id)
+        if data is None:
+            raise NotFoundException("实验-模板关联不存在")
     return data
 
 
@@ -645,3 +652,90 @@ async def update_experiment_template_input_files(
     if not excel_store.update_experiment_template_input_files(experiment_id, template_id, storage_path, input_files):
         raise NotFoundException("实验-模板关联不存在")
     return {"message": "更新成功", "storage_path": storage_path, "input_files": input_files}
+
+
+@router.post("/{experiment_id}/templates/{template_id}/upload-files")
+async def upload_input_files(
+    experiment_id: int,
+    template_id: int,
+    files: list[UploadFile] = File(...),
+    target: str = Query("private", description="上传目标: shared(共享) 或 private(私有)"),
+    current_user: dict = Depends(get_current_user)
+):
+    """批量上传输入文件到服务端存储路径"""
+    import os
+    import shutil
+    from pathlib import Path
+    from app.config import settings
+    from app.storage.excel_store import excel_store
+
+    if target == "shared":
+        # 上传到实验级共享目录
+        storage_path = settings.get_experiment_shared_input_dir(experiment_id)
+        storage_path.mkdir(parents=True, exist_ok=True)
+
+        # 获取现有文件列表
+        data = excel_store.get_experiment_shared_input_files(experiment_id)
+        if data is None:
+            raise NotFoundException("实验不存在")
+        existing_files = data.get("input_files", [])
+    else:
+        # 上传到模板私有目录
+        # 验证实验-模板关联存在
+        data = excel_store.get_experiment_template_input_files(experiment_id, template_id)
+        if data is None:
+            raise NotFoundException("实验-模板关联不存在")
+
+        # 使用新的目录结构
+        storage_path = settings.get_template_input_dir(experiment_id, template_id)
+        storage_path.mkdir(parents=True, exist_ok=True)
+        existing_files = data.get("input_files", [])
+
+    uploaded_files = []
+    for file in files:
+        if not file.filename:
+            continue
+
+        # 保存文件
+        file_path = storage_path / file.filename
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        # 获取文件大小
+        file_size = os.path.getsize(file_path)
+        uploaded_files.append({
+            "name": file.filename,
+            "size": file_size,
+            "path": str(file_path)
+        })
+
+    # 合并文件列表，去重
+    existing_names = {f["name"] for f in existing_files}
+    for f in uploaded_files:
+        if f["name"] not in existing_names:
+            existing_files.append(f)
+
+    # 更新数据库
+    if target == "shared":
+        excel_store.update_experiment_shared_input_files(experiment_id, existing_files)
+    else:
+        excel_store.update_experiment_template_input_files(
+            experiment_id, template_id, str(storage_path), existing_files
+        )
+
+    # 计算可用空间
+    free_space = None
+    try:
+        usage = shutil.disk_usage(storage_path)
+        free_space = usage.free
+    except Exception:
+        pass
+
+    return {
+        "message": "上传成功",
+        "target": target,
+        "storage_path": str(storage_path),
+        "uploaded_files": uploaded_files,
+        "input_files": existing_files,
+        "free_space": free_space
+    }

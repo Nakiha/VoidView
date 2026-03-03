@@ -13,11 +13,14 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
 from qfluentwidgets import (
     BodyLabel, StrongBodyLabel, CaptionLabel, TransparentToolButton,
-    ListWidget, FluentIcon,
+    ListWidget, FluentIcon, ComboBox,
     MessageBoxBase, SubtitleLabel, InfoBar, CardWidget, isDarkTheme
 )
 
 from app.config import user_config
+from voidview_shared import get_logger
+
+logger = get_logger()
 
 
 def format_file_size(size_bytes: int) -> str:
@@ -41,11 +44,12 @@ def get_server_hostname() -> str:
 class FileUploadDialog(MessageBoxBase):
     """文件上传对话框 - 支持拖拽和文件选择"""
 
-    filesSelected = Signal(list)  # 选中文件列表
+    filesSelected = Signal(list, str)  # (文件列表, 目标类型: "shared"/"private")
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._files: List[str] = []
+        self._target: str = "private"  # 默认私有
 
         self.setClosableOnMaskClicked(True)
         self.yesButton.setText("上传")
@@ -54,6 +58,18 @@ class FileUploadDialog(MessageBoxBase):
         # 标题
         self.titleLabel = SubtitleLabel("上传文件", self)
         self.viewLayout.addWidget(self.titleLabel)
+
+        # 上传目标选择
+        targetLayout = QHBoxLayout()
+        targetLabel = BodyLabel("上传到:", self)
+        self.targetComboBox = ComboBox(self)
+        self.targetComboBox.addItems(["私有输入 (仅此模板)", "共享输入 (所有模板)"])
+        self.targetComboBox.setCurrentIndex(0)
+        self.targetComboBox.currentIndexChanged.connect(self._onTargetChanged)
+        targetLayout.addWidget(targetLabel)
+        targetLayout.addWidget(self.targetComboBox)
+        targetLayout.addStretch()
+        self.viewLayout.addLayout(targetLayout)
 
         # 拖拽区域
         self.dropArea = FileDropArea(self)
@@ -71,10 +87,18 @@ class FileUploadDialog(MessageBoxBase):
         self.yesButton.clicked.disconnect()  # 断开默认连接
         self.yesButton.clicked.connect(self._onYesClicked)
 
+    def _onTargetChanged(self, index: int):
+        """上传目标变更"""
+        self._target = "shared" if index == 1 else "private"
+
+    def get_target(self) -> str:
+        """获取上传目标"""
+        return self._target
+
     def _onYesClicked(self):
         """上传按钮点击"""
         if self.validate():
-            self.filesSelected.emit(self._files)
+            self.filesSelected.emit(self._files, self._target)
             self.accept()
 
     def _onFilesDropped(self, files: List[str]):
@@ -351,28 +375,68 @@ class InputFileField(QWidget):
             # 文件会在 _onFilesSelected 中处理
             pass
 
-    def _onFilesSelected(self, files: List[str]):
-        """文件被选中"""
-        # 添加文件到列表
-        for file_path in files:
-            file_name = os.path.basename(file_path)
-            file_size = os.path.getsize(file_path)
-            self._files.append({
-                "name": file_name,
-                "size": file_size,
-                "path": file_path
-            })
+    def _onFilesSelected(self, files: List[str], target: str = "private"):
+        """文件被选中 - 上传到服务端
 
-        self._updateFileList()
-        self.filesChanged.emit(self._files)
-        self._save_to_backend()
+        Args:
+            files: 文件路径列表
+            target: 上传目标 - "shared"(共享) 或 "private"(私有)
+        """
+        if self._experiment_id is None or self._template_id is None:
+            InfoBar.warning(
+                title="无法上传",
+                content="请先保存实验后再上传文件",
+                parent=self.window(),
+                duration=3000
+            )
+            return
 
-        InfoBar.success(
-            title="上传成功",
-            content=f"已添加 {len(files)} 个文件",
+        from api.experiment import version_api
+
+        # 显示上传进度提示
+        target_name = "共享目录" if target == "shared" else "私有目录"
+        InfoBar.info(
+            title="正在上传",
+            content=f"正在上传 {len(files)} 个文件到{target_name}...",
             parent=self.window(),
-            duration=3000
+            duration=5000
         )
+
+        try:
+            # 上传文件到服务端
+            result = version_api.upload_input_files(
+                self._experiment_id,
+                self._template_id,
+                files,
+                target=target
+            )
+
+            # 更新本地状态
+            self._storage_path = result.get("storage_path", "")
+            self._files = result.get("input_files", [])
+            self._updateFileList()
+
+            # 更新可用空间显示
+            free_space = result.get("free_space")
+            if free_space is not None:
+                self.freeSpaceLabel.setText(f"可用空间: {format_file_size(free_space)}")
+
+            self.filesChanged.emit(self._files)
+
+            InfoBar.success(
+                title="上传成功",
+                content=f"已上传 {len(files)} 个文件到服务端",
+                parent=self.window(),
+                duration=3000
+            )
+        except Exception as e:
+            logger.error(f"文件上传失败: {e}", exc_info=True)
+            InfoBar.error(
+                title="上传失败",
+                content=f"文件上传失败: {str(e)}",
+                parent=self.window(),
+                duration=5000
+            )
 
     def _updateFileList(self):
         """更新文件列表显示"""
@@ -441,6 +505,7 @@ class InputFileField(QWidget):
             else:
                 self.freeSpaceLabel.setText("可用空间: --")
         except Exception as e:
+            logger.error(f"加载输入文件失败: experiment_id={self._experiment_id}, template_id={self._template_id}, error={e}")
             InfoBar.warning(
                 title="加载失败",
                 content=f"无法加载输入文件: {str(e)}",
@@ -462,6 +527,7 @@ class InputFileField(QWidget):
                 self._files
             )
         except Exception as e:
+            logger.error(f"无法保存输入文件: {str(e)}")
             InfoBar.warning(
                 title="保存失败",
                 content=f"无法保存输入文件: {str(e)}",

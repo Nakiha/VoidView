@@ -265,9 +265,18 @@ class TemplateVersionAPI:
         return api_client.put(f"/experiments/{experiment_id}/templates/{template_id}/notes", {"notes": notes})
 
     @staticmethod
-    def get_input_files(experiment_id: int, template_id: int) -> dict:
-        """获取实验-模板关联的输入文件"""
-        response = api_client.get(f"/experiments/{experiment_id}/templates/{template_id}/input-files")
+    def get_input_files(experiment_id: int, template_id: int, target: str = "private") -> dict:
+        """获取实验-模板关联的输入文件
+
+        Args:
+            experiment_id: 实验ID
+            template_id: 模板ID
+            target: 上传目标 - "shared"(共享) 或 "private"(私有)
+        """
+        response = api_client.get(
+            f"/experiments/{experiment_id}/templates/{template_id}/input-files",
+            params={"target": target}
+        )
         return {
             "storage_path": response.get("storage_path", ""),
             "input_files": response.get("input_files", []),
@@ -280,6 +289,25 @@ class TemplateVersionAPI:
         return api_client.put(
             f"/experiments/{experiment_id}/templates/{template_id}/input-files",
             {"storage_path": storage_path, "input_files": input_files}
+        )
+
+    @staticmethod
+    def upload_input_files(experiment_id: int, template_id: int, file_paths: list, target: str = "private") -> dict:
+        """上传输入文件到服务端
+
+        Args:
+            experiment_id: 实验ID
+            template_id: 模板ID
+            file_paths: 本地文件路径列表
+            target: 上传目标 - "shared"(共享) 或 "private"(私有)
+
+        Returns:
+            包含 storage_path, uploaded_files, input_files 的响应
+        """
+        return api_client.upload_files(
+            f"/experiments/{experiment_id}/templates/{template_id}/upload-files",
+            file_paths,
+            params={"target": target}
         )
 
 

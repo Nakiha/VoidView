@@ -58,3 +58,9 @@ class IssueType(str, Enum):
     CONTOUR = "contour"        # 轮廓缺失
     MOTION = "motion"          # 拖影
     OTHER = "other"            # 其他
+
+
+class UploadTarget(str, Enum):
+    """上传目标类型"""
+    SHARED = "shared"     # 实验级共享输入（所有模板可用）
+    PRIVATE = "private"   # 模板私有输入

@@ -140,6 +140,26 @@ color = PRESET_COLORS[experiment_id % len(PRESET_COLORS)]
 - **代码**: ruff + mypy + PEP 8
 - **Git**: 分支 `feature/xxx`, `fix/xxx`；提交 `type(scope): description`
 - **UI**: Windows 11 Fluent Design
+- **异常处理**: 所有 `except` 块必须记录日志，禁止静默捕获异常
+
+```python
+from voidview_shared import get_logger
+
+logger = get_logger(__name__)
+
+# ✅ 正确
+try:
+    risky_operation()
+except ValueError as e:
+    logger.error(f"操作失败: {e}")
+    # 处理或重新抛出
+
+# ❌ 错误
+try:
+    risky_operation()
+except Exception:
+    pass  # 静默吞掉异常，调试时无法定位问题
+```
 
 ## 相关资源
 

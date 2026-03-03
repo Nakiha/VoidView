@@ -3,7 +3,8 @@
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel
 from qfluentwidgets import (
-    BodyLabel, CaptionLabel, CardWidget, CheckBox, SmoothScrollArea
+    BodyLabel, CaptionLabel, CardWidget, CheckBox, FlowLayout,
+    SmoothScrollArea, StrongBodyLabel
 )
 
 from models.experiment import MatrixRow, ExperimentBrief
@@ -74,24 +75,51 @@ class ExperimentTagsRow(QWidget):
     def __init__(self, experiments: list, parent=None):
         super().__init__(parent)
         self._experiments = experiments
-        self._expanded = False
+        self._expanded = True  # 默认展开（不折叠）
         self._tags = []
         self._moreBtn = None
         self.setupUI()
 
     def setupUI(self):
-        self._mainLayout = QHBoxLayout(self)
+        self._mainLayout = FlowLayout(self, needAni=False)
         self._mainLayout.setContentsMargins(0, 0, 0, 0)
-        self._mainLayout.setSpacing(8)
+        self._mainLayout.setHorizontalSpacing(8)
+        self._mainLayout.setVerticalSpacing(4)
         self._renderTags()
+
+    def setExpanded(self, expanded: bool):
+        """设置展开状态"""
+        if self._expanded != expanded:
+            self._expanded = expanded
+            self._renderTags()
+
+    def _clearLayout(self):
+        """安全清除布局中的所有 widgets"""
+        # 先收集所有需要删除的 widgets
+        widgets_to_delete = []
+        for i in range(self._mainLayout.count()):
+            item = self._mainLayout.itemAt(i)
+            if item is not None:
+                # FlowLayout 的 itemAt 可能返回 QWidget 或 QLayoutItem
+                if isinstance(item, QWidget):
+                    widgets_to_delete.append(item)
+                elif hasattr(item, 'widget'):
+                    w = item.widget()
+                    if w:
+                        widgets_to_delete.append(w)
+
+        # 从布局中移除并删除
+        for widget in widgets_to_delete:
+            self._mainLayout.removeWidget(widget)
+            widget.setParent(None)
+            widget.deleteLater()
+
+        self._tags.clear()
+        self._moreBtn = None
 
     def _renderTags(self):
         # 清除现有内容
-        while self._mainLayout.count():
-            item = self._mainLayout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-        self._tags.clear()
+        self._clearLayout()
 
         if not self._experiments:
             # 无实验
@@ -99,43 +127,63 @@ class ExperimentTagsRow(QWidget):
             label.setText("-")
             label.setStyleSheet("color: rgba(255, 255, 255, 0.25);")
             self._mainLayout.addWidget(label)
-            self._mainLayout.addStretch()
             return
 
         # 显示标签
         visible_count = len(self._experiments) if self._expanded else min(self.MAX_VISIBLE_TAGS, len(self._experiments))
 
-        for i, exp in enumerate(self._experiments[:visible_count]):
+        for exp in self._experiments[:visible_count]:
             tag = ExperimentTag(exp, self)
             tag.clicked.connect(self.experimentClicked.emit)
             self._mainLayout.addWidget(tag)
             self._tags.append(tag)
 
-        # 如果还有更多，显示展开按钮
-        if len(self._experiments) > self.MAX_VISIBLE_TAGS and not self._expanded:
+        # 如果折叠状态且还有更多，显示展开按钮
+        if not self._expanded and len(self._experiments) > self.MAX_VISIBLE_TAGS:
             self._moreBtn = BodyLabel(self)
             self._moreBtn.setText(f"+{len(self._experiments) - self.MAX_VISIBLE_TAGS}")
             self._moreBtn.setCursor(Qt.PointingHandCursor)
             self._moreBtn.setFixedHeight(28)
             self._moreBtn.setStyleSheet("""
                 BodyLabel {
-                    color: #0078D4;
+                    color: rgba(255, 255, 255, 0.7);
                     padding: 0 10px;
-                    background-color: rgba(0, 120, 212, 0.12);
+                    background-color: rgba(255, 255, 255, 0.06);
+                    border: 1px rgba(255, 255, 255, 0.2);
                     border-radius: 6px;
                 }
                 BodyLabel:hover {
-                    background-color: rgba(0, 120, 212, 0.2);
+                    background-color: rgba(255, 255, 255, 0.12);
+                    border-color: rgba(255, 255, 255, 0.3);
+                    color: rgba(255, 255, 255, 0.9);
                 }
             """)
-            self._moreBtn.mousePressEvent = lambda e: self._toggleExpand()
+            self._moreBtn.mousePressEvent = lambda _: self._toggleExpand()
             self._mainLayout.addWidget(self._moreBtn)
-
-        self._mainLayout.addStretch()
 
     def _toggleExpand(self):
         self._expanded = not self._expanded
         self._renderTags()
+
+
+class GroupTitleCard(QWidget):
+    """分组标题 - 显示 "客户名 APP" """
+
+    def __init__(self, customer_name: str, app_name: str, parent=None):
+        super().__init__(parent)
+        self._customer_name = customer_name
+        self._app_name = app_name
+        self.setupUI()
+
+    def setupUI(self):
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 4, 0, 4)
+        layout.setSpacing(0)
+
+        title = StrongBodyLabel(self)
+        title.setText(f"{self._customer_name}  {self._app_name}")
+        layout.addWidget(title)
+        layout.addStretch()
 
 
 class MatrixCard(CardWidget):
@@ -162,30 +210,15 @@ class MatrixCard(CardWidget):
 
         # 多选框（默认隐藏）
         self.checkBox = CheckBox(self)
-        self.checkBox.setFixedWidth(20)
+        self.checkBox.setFixedSize(20, 20)
         self.checkBox.stateChanged.connect(self._onCheckBoxChanged)
         self.checkBox.setVisible(False)
         layout.addWidget(self.checkBox)
 
-        # 左侧：客户名、APP/模板
-        leftWidget = QWidget(self)
-        leftLayout = QVBoxLayout(leftWidget)
-        leftLayout.setContentsMargins(0, 0, 0, 0)
-        leftLayout.setSpacing(2)
-
-        # 客户名
-        customerLabel = BodyLabel(leftWidget)
-        customerLabel.setText(self._row_data.customer_name)
-        customerLabel.setStyleSheet("font-weight: 600;")
-        leftLayout.addWidget(customerLabel)
-
-        # APP / 模板
-        pathLabel = CaptionLabel(leftWidget)
-        pathLabel.setText(f"{self._row_data.app_name} / {self._row_data.template_name}")
-        pathLabel.setStyleSheet("color: rgba(255, 255, 255, 0.5);")
-        leftLayout.addWidget(pathLabel)
-
-        layout.addWidget(leftWidget, 1)
+        # 左侧：模板名（单行）
+        leftLabel = BodyLabel(self)
+        leftLabel.setText(self._row_data.template_name)
+        layout.addWidget(leftLabel, 1)
 
         # 右侧：实验标签
         experiments = list(self._row_data.experiments.values())
@@ -204,6 +237,10 @@ class MatrixCard(CardWidget):
             self.checkBox.setChecked(False)
             self._selected = False
             self._updateStyle()
+
+    def setCollapsed(self, collapsed: bool):
+        """设置标签折叠状态"""
+        self._tagsRow.setExpanded(not collapsed)
 
     def setSelected(self, selected: bool):
         """设置选中状态"""
@@ -250,6 +287,7 @@ class MatrixTableWidget(QWidget):
         super().__init__(parent)
         self._rows = []
         self._row_widgets = []
+        self._group_titles = []  # 分组标题列表 [(widget, customer_name, app_name), ...]
         self._selected_rows = set()
         self._filter_text = ""
         self._multi_select_mode = False
@@ -278,12 +316,10 @@ class MatrixTableWidget(QWidget):
             QWidget {
                 background: transparent;
             }
-            MatrixCard[selected="true"] {
-                background-color: rgba(0, 120, 212, 0.15);
-            }
         """)
         self.cardLayout = QVBoxLayout(self.cardContainer)
-        self.cardLayout.setContentsMargins(0, 4, 0, 12)
+        # 右边距 20px 给滚动条预留空间
+        self.cardLayout.setContentsMargins(0, 0, 20, 0)
         self.cardLayout.setSpacing(6)
 
         self.scrollArea.setWidget(self.cardContainer)
@@ -318,6 +354,11 @@ class MatrixTableWidget(QWidget):
         self._updateSelectionHighlight()
         self.rowSelectionChanged.emit(set())
 
+    def setCollapsed(self, collapsed: bool):
+        """设置所有标签的折叠状态"""
+        for card in self._row_widgets:
+            card.setCollapsed(collapsed)
+
     def applyFilter(self, filter_text: str):
         """应用筛选（外部调用）"""
         self._filter_text = filter_text.lower()
@@ -328,8 +369,19 @@ class MatrixTableWidget(QWidget):
         # 清除现有内容
         self._clearCards()
 
-        # 渲染卡片
+        # 按客户名+APP分组渲染
+        current_group = None
         for row_idx, row_data in enumerate(self._rows):
+            group_key = (row_data.customer_name, row_data.app_name)
+
+            # 新分组时插入标题
+            if group_key != current_group:
+                current_group = group_key
+                title = GroupTitleCard(row_data.customer_name, row_data.app_name, self)
+                self.cardLayout.addWidget(title)
+                self._group_titles.append((title, row_data.customer_name, row_data.app_name))
+
+            # 渲染卡片
             card = MatrixCard(row_idx, row_data, self)
             card.setMultiSelectMode(self._multi_select_mode)
             card.rowClicked.connect(self.rowClicked.emit)
@@ -341,12 +393,13 @@ class MatrixTableWidget(QWidget):
         self.cardLayout.addStretch()
 
     def _clearCards(self):
-        """清除所有卡片"""
+        """清除所有卡片和标题"""
         while self.cardLayout.count():
             item = self.cardLayout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
         self._row_widgets.clear()
+        self._group_titles.clear()
 
     def _onSelectionToggled(self, row_idx: int):
         """选择状态切换"""
@@ -365,13 +418,30 @@ class MatrixTableWidget(QWidget):
     def _applyFilters(self):
         """应用筛选"""
         if not self._filter_text:
+            # 显示所有卡片和标题
             for card in self._row_widgets:
                 card.setVisible(True)
+            for title, _, _ in self._group_titles:
+                title.setVisible(True)
             return
 
+        # 先隐藏所有分组标题
+        for title, _, _ in self._group_titles:
+            title.setVisible(False)
+
+        # 过滤卡片，并记录哪些分组有可见卡片
+        visible_groups = set()
         for i, card in enumerate(self._row_widgets):
             if i < len(self._rows):
                 row_data = self._rows[i]
                 # 搜索客户名、APP、模板
                 search_text = f"{row_data.customer_name} {row_data.app_name} {row_data.template_name}".lower()
-                card.setVisible(self._filter_text in search_text)
+                visible = self._filter_text in search_text
+                card.setVisible(visible)
+                if visible:
+                    visible_groups.add((row_data.customer_name, row_data.app_name))
+
+        # 显示有可见卡片的分组标题
+        for title, customer_name, app_name in self._group_titles:
+            if (customer_name, app_name) in visible_groups:
+                title.setVisible(True)

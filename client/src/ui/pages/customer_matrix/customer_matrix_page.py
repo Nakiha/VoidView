@@ -26,30 +26,52 @@ class CustomerMatrixPage(QWidget):
         self._matrix_data = MatrixResponse(rows=[], experiments=[])
         self._selected_rows = set()
         self._multi_select_mode = False
+        self._collapsed = False  # 默认不折叠
 
         self.setupUI()
         self.loadData()
 
     def setupUI(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setContentsMargins(20, 20, 0, 0)  # 右边距 0，给表格区域使用
         layout.setSpacing(16)
 
-        # 标题栏
+        # 标题栏 - 单独设置右边距
         headerLayout = QHBoxLayout()
+        headerLayout.setContentsMargins(0, 0, 20, 0)  # 右边距 20px
         title = SubtitleLabel(self)
         title.setText("客户矩阵")
         headerLayout.addWidget(title)
         headerLayout.addStretch()
 
+        # 折叠按钮（在添加按钮左边）
+        self.collapseBtn = TransparentToolButton(FluentIcon.UP, self)
+        self.collapseBtn.setToolTip("折叠标签")
+        self.collapseBtn.setCheckable(True)
+        self.collapseBtn.setFixedSize(36, 36)
+        self.collapseBtn.clicked.connect(self._toggleCollapse)
+        headerLayout.addWidget(self.collapseBtn)
+
+        # 添加客户/APP/模板按钮
+        self.addEntityBtn = TransparentToolButton(FluentIcon.ADD, self)
+        self.addEntityBtn.setToolTip("添加客户/APP/模板")
+        self.addEntityBtn.setFixedSize(36, 36)
+        self.addEntityBtn.clicked.connect(self._showAddEntityDialog)
+        headerLayout.addWidget(self.addEntityBtn)
+
         # 多选按钮
         self.multiSelectBtn = TransparentToolButton(FluentIcon.CHECKBOX, self)
+        self.multiSelectBtn.setToolTip("多选模式")
         self.multiSelectBtn.setCheckable(True)
+        self.multiSelectBtn.setFixedSize(36, 36)
         self.multiSelectBtn.clicked.connect(self._toggleMultiSelect)
         headerLayout.addWidget(self.multiSelectBtn)
 
         # 刷新按钮
         self.refreshBtn = TransparentToolButton(FluentIcon.SYNC, self)
+        self.refreshBtn.setToolTip("刷新")
+        self.refreshBtn.setCheckable(False)
+        self.refreshBtn.setFixedSize(36, 36)
         self.refreshBtn.clicked.connect(self.loadData)
         headerLayout.addWidget(self.refreshBtn)
 
@@ -72,23 +94,24 @@ class CustomerMatrixPage(QWidget):
 
         # 悬浮工具栏
         self.floatingToolbar = FloatingToolbar(self)
-        self.floatingToolbar.addEntityClicked.connect(self._showAddEntityDialog)
         self.floatingToolbar.addExperimentClicked.connect(self._showAddExperimentDialog)
+
+    def _toggleCollapse(self):
+        """切换折叠状态"""
+        self._collapsed = self.collapseBtn.isChecked()
+        if self._collapsed:
+            self.collapseBtn.setToolTip("展开标签")
+            self.collapseBtn.setIcon(FluentIcon.DOWN)
+        else:
+            self.collapseBtn.setToolTip("折叠标签")
+            self.collapseBtn.setIcon(FluentIcon.UP)
+        self.matrixTable.setCollapsed(self._collapsed)
 
     def _toggleMultiSelect(self):
         """切换多选模式"""
         self._multi_select_mode = self.multiSelectBtn.isChecked()
 
-        # 更新按钮样式
-        if self._multi_select_mode:
-            self.multiSelectBtn.setStyleSheet("""
-                TransparentToolButton {
-                    background-color: rgba(255, 200, 0, 0.3);
-                    border-radius: 4px;
-                }
-            """)
-        else:
-            self.multiSelectBtn.setStyleSheet("")
+        if not self._multi_select_mode:
             # 退出多选模式时清空选择
             self.matrixTable.clearSelection()
 

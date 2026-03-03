@@ -15,8 +15,9 @@ def _get_default_storage_dir() -> Path:
     if "STORAGE_PATH" in os.environ:
         return Path(os.environ["STORAGE_PATH"])
 
-    # 默认使用项目 server/storage 目录
-    return PROJECT_ROOT / "server" / "storage"
+    # 默认使用项目根目录的 data 文件夹
+    # PROJECT_ROOT 已经是 VoidView 项目根目录
+    return PROJECT_ROOT / "data"
 
 
 class Settings(BaseSettings):
@@ -77,6 +78,35 @@ class Settings(BaseSettings):
     @property
     def attachments_path(self) -> Path:
         return self._attachments_path
+
+    @property
+    def experiments_path(self) -> Path:
+        """获取实验数据存储根目录"""
+        return self._storage_path / "experiments"
+
+    def get_experiment_dir(self, experiment_id: int) -> Path:
+        """获取实验目录路径"""
+        return self.experiments_path / f"experiment_{experiment_id}"
+
+    def get_experiment_shared_input_dir(self, experiment_id: int) -> Path:
+        """获取实验级共享输入目录"""
+        return self.get_experiment_dir(experiment_id) / "input"
+
+    def get_template_dir(self, experiment_id: int, template_id: int) -> Path:
+        """获取模板目录路径"""
+        return self.get_experiment_dir(experiment_id) / f"template_{template_id}"
+
+    def get_template_input_dir(self, experiment_id: int, template_id: int) -> Path:
+        """获取模板私有输入目录"""
+        return self.get_template_dir(experiment_id, template_id) / "input"
+
+    def get_template_versions_dir(self, experiment_id: int, template_id: int) -> Path:
+        """获取模板版本输出目录"""
+        return self.get_template_dir(experiment_id, template_id) / "versions"
+
+    def get_version_dir(self, experiment_id: int, template_id: int, version_id: int) -> Path:
+        """获取版本目录路径"""
+        return self.get_template_versions_dir(experiment_id, template_id) / f"version_{version_id}"
 
 
 settings = Settings()

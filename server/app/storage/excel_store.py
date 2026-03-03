@@ -15,7 +15,7 @@ import json
 from openpyxl import Workbook, load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
 
-from app.config import settings, PROJECT_ROOT
+from app.config import settings
 
 
 # 预设颜色列表
@@ -32,12 +32,8 @@ def get_color_for_experiment(experiment_id: int) -> str:
 
 def _get_data_dir() -> Path:
     """获取数据目录路径"""
-    if settings.DEBUG:
-        # 开发模式：存储到项目根目录的 data 文件夹
-        return PROJECT_ROOT / "data" / "excel_data"
-    else:
-        # 生产模式：存储到配置的 storage_path
-        return settings.storage_path / "excel_data"
+    # 统一使用配置的 storage_path，确保所有持久化数据在同一位置
+    return settings.storage_path / "excel_data"
 
 
 class ExcelStore:
@@ -88,7 +84,7 @@ class ExcelStore:
             self._migrate_add_template_versions(experiments_file)
 
     def _migrate_add_template_versions(self, filepath: Path):
-        """迁移：添加 template_versions 表"""
+        """迁移：添加 template_versions 表和相关列"""
         with self._file_lock:
             wb = load_workbook(filepath)
             changed = False
@@ -99,6 +95,14 @@ class ExcelStore:
                 headers = ["id", "experiment_id", "template_id", "name", "notes", "template_content", "order_index", "created_at", "updated_at"]
                 for col, header in enumerate(headers, 1):
                     ws.cell(row=1, column=col, value=header)
+                changed = True
+
+            # 迁移 experiments 表：添加 shared_input_files 列
+            ws_experiments = wb["experiments"]
+            exp_headers = [ws_experiments.cell(row=1, column=col).value for col in range(1, ws_experiments.max_column + 1)]
+            if "shared_input_files" not in exp_headers:
+                shared_files_col = len(exp_headers) + 1
+                ws_experiments.cell(row=1, column=shared_files_col, value="shared_input_files")
                 changed = True
 
             # 迁移 experiment_templates 表：添加 notes, storage_path, input_files 列
@@ -809,8 +813,8 @@ class ExcelStore:
                     except:
                         input_files = []
 
-                # 如果没有设置存储路径，使用服务端默认存储路径
-                if not storage_path:
+                # 如果没有设置存储路径，或者路径包含 AppData（旧的错误路径），使用服务端默认存储路径
+                if not storage_path or "AppData" in storage_path:
                     storage_path = str(settings.storage_path)
 
                 # 计算可用空间（跨平台：Windows 和 Linux 都支持 shutil.disk_usage）
@@ -858,6 +862,79 @@ class ExcelStore:
                 ws_links.cell(row=row, column=2).value == template_id):
                 ws_links.cell(row=row, column=storage_col, value=storage_path)
                 ws_links.cell(row=row, column=files_col, value=json.dumps(input_files, ensure_ascii=False))
+                self._save_workbook(wb, "experiments.xlsx")
+                return True
+
+        return False
+
+    # ============ 共享输入文件方法 ============
+
+    def get_experiment_shared_input_files(self, experiment_id: int) -> Optional[Dict]:
+        """获取实验级共享输入文件信息"""
+        import json
+        import shutil
+        wb = self._load_workbook("experiments.xlsx")
+        ws = wb["experiments"]
+
+        headers = [ws.cell(row=1, column=col).value for col in range(1, ws.max_column + 1)]
+        id_col = headers.index("id") + 1 if "id" in headers else None
+        shared_files_col = headers.index("shared_input_files") + 1 if "shared_input_files" in headers else None
+
+        if id_col is None:
+            return None
+
+        for row in range(2, ws.max_row + 1):
+            if ws.cell(row=row, column=id_col).value == experiment_id:
+                shared_files = []
+                if shared_files_col:
+                    files_str = ws.cell(row=row, column=shared_files_col).value or "[]"
+                    try:
+                        shared_files = json.loads(files_str)
+                    except Exception:
+                        shared_files = []
+
+                # 获取共享输入目录路径
+                storage_path = str(settings.get_experiment_shared_input_dir(experiment_id))
+
+                # 计算可用空间
+                free_space = None
+                try:
+                    check_path = Path(storage_path)
+                    while not check_path.exists() and check_path != check_path.parent:
+                        check_path = check_path.parent
+                    if check_path.exists():
+                        usage = shutil.disk_usage(check_path)
+                        free_space = usage.free
+                except Exception:
+                    free_space = None
+
+                return {"storage_path": storage_path, "input_files": shared_files, "free_space": free_space}
+
+        return None
+
+    def update_experiment_shared_input_files(self, experiment_id: int, input_files: List[Dict]) -> bool:
+        """更新实验级共享输入文件信息"""
+        import json
+        wb = self._load_workbook("experiments.xlsx")
+        ws = wb["experiments"]
+
+        headers = [ws.cell(row=1, column=col).value for col in range(1, ws.max_column + 1)]
+        id_col = headers.index("id") + 1 if "id" in headers else None
+
+        if id_col is None:
+            return False
+
+        # 确保 shared_input_files 列存在
+        if "shared_input_files" not in headers:
+            shared_files_col = ws.max_column + 1
+            ws.cell(row=1, column=shared_files_col, value="shared_input_files")
+            headers.append("shared_input_files")
+        else:
+            shared_files_col = headers.index("shared_input_files") + 1
+
+        for row in range(2, ws.max_row + 1):
+            if ws.cell(row=row, column=id_col).value == experiment_id:
+                ws.cell(row=row, column=shared_files_col, value=json.dumps(input_files, ensure_ascii=False))
                 self._save_workbook(wb, "experiments.xlsx")
                 return True
 

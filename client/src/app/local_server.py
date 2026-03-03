@@ -144,12 +144,19 @@ class LocalServerManager:
 
         # 确定数据目录
         if data_dir is None:
-            if sys.platform == "win32":
-                self._data_dir = Path.home() / "AppData" / "Local" / "VoidView" / "data"
-            elif sys.platform == "darwin":
-                self._data_dir = Path.home() / "Library" / "Application Support" / "VoidView" / "data"
+            if getattr(sys, 'frozen', False):
+                # 打包模式：使用用户目录
+                if sys.platform == "win32":
+                    self._data_dir = Path.home() / "AppData" / "Local" / "VoidView" / "data"
+                elif sys.platform == "darwin":
+                    self._data_dir = Path.home() / "Library" / "Application Support" / "VoidView" / "data"
+                else:
+                    self._data_dir = Path.home() / ".local" / "share" / "VoidView" / "data"
             else:
-                self._data_dir = Path.home() / ".local" / "share" / "VoidView" / "data"
+                # 开发模式：使用项目目录
+                client_dir = Path(__file__).parent.parent.parent
+                project_root = client_dir.parent
+                self._data_dir = project_root / "data"
         else:
             self._data_dir = data_dir
 

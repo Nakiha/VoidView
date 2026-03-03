@@ -180,6 +180,44 @@ class APIClient:
         except (httpx.ConnectError, httpx.TimeoutException, httpx.NetworkError) as e:
             self._handle_request_error(e)
 
+    def upload_files(self, path: str, files: list, file_field_name: str = "files", params: dict = None) -> dict:
+        """上传文件 (multipart/form-data)
+
+        Args:
+            path: API 路径
+            files: 文件路径列表
+            file_field_name: 表单中文件的字段名
+            params: 查询参数
+
+        Returns:
+            响应数据
+        """
+        try:
+            import os
+            import mimetypes
+
+            # 准备 multipart 文件数据
+            files_data = []
+            for file_path in files:
+                filename = os.path.basename(file_path)
+                # 根据文件扩展名猜测 MIME 类型
+                mime_type, _ = mimetypes.guess_type(file_path)
+                if mime_type is None:
+                    mime_type = "application/octet-stream"
+                files_data.append((file_field_name, (filename, open(file_path, "rb"), mime_type)))
+
+            # 使用更长的超时时间用于文件上传
+            timeout = httpx.Timeout(connect=10.0, read=300.0, write=300.0, pool=10.0)
+            response = self.client.post(path, files=files_data, timeout=timeout, params=params)
+
+            # 关闭文件句柄
+            for _, (_, file_obj, _) in files_data:
+                file_obj.close()
+
+            return self._handle_response(response)
+        except (httpx.ConnectError, httpx.TimeoutException, httpx.NetworkError) as e:
+            self._handle_request_error(e)
+
     def close(self):
         """关闭客户端"""
         if self._client:

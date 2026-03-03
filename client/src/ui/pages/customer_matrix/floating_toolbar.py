@@ -2,13 +2,12 @@
 
 from PySide6.QtCore import Qt, Signal, QTimer, QEvent
 from PySide6.QtWidgets import QWidget, QHBoxLayout
-from qfluentwidgets import PrimaryPushButton, PushButton, FluentIcon
+from qfluentwidgets import PrimaryPushButton, FluentIcon
 
 
 class FloatingToolbar(QWidget):
     """右下角悬浮工具栏"""
 
-    addEntityClicked = Signal()
     addExperimentClicked = Signal()
 
     def __init__(self, parent=None):
@@ -26,15 +25,8 @@ class FloatingToolbar(QWidget):
         layout.setContentsMargins(12, 8, 12, 8)
         layout.setSpacing(12)
 
-        # 按钮1: 添加客户/APP/模板
-        self.addEntityBtn = PrimaryPushButton(self)
-        self.addEntityBtn.setText("添加客户/APP/模板")
-        self.addEntityBtn.setIcon(FluentIcon.ADD)
-        self.addEntityBtn.clicked.connect(self.addEntityClicked)
-        layout.addWidget(self.addEntityBtn)
-
-        # 按钮2: 选中行添加实验
-        self.addExperimentBtn = PushButton(self)
+        # 选中行添加实验按钮
+        self.addExperimentBtn = PrimaryPushButton(self)
         self.addExperimentBtn.setText("选中行添加实验")
         self.addExperimentBtn.setIcon(FluentIcon.ADD_TO)
         self.addExperimentBtn.clicked.connect(self.addExperimentClicked)
