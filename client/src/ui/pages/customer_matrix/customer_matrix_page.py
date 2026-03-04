@@ -12,6 +12,7 @@ from models.experiment import MatrixResponse
 from .matrix_table_widget import MatrixTableWidget
 from .floating_toolbar import FloatingToolbar
 from .dialogs import AddEntityDialog, AddExperimentDialog
+from ..experiment.experiment_detail_window import ExperimentDetailWindow
 
 
 class CustomerMatrixPage(QWidget):
@@ -155,8 +156,9 @@ class CustomerMatrixPage(QWidget):
         self.floatingToolbar.setHasSelection(len(selected_rows) > 0)
 
     def _onExperimentClicked(self, experiment_id: int):
-        """点击实验"""
-        self.experimentClicked.emit(experiment_id)
+        """点击实验 - 打开实验详情窗口"""
+        window = ExperimentDetailWindow.getOrCreate(experiment_id, self.window())
+        window.show()
 
     def _showAddEntityDialog(self):
         """显示添加客户/APP/模板对话框"""

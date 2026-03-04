@@ -1,8 +1,8 @@
 """实验详情独立窗口"""
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QShortcut, QKeySequence
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QFrame, QSplitter
+from PySide6.QtCore import Qt, Signal, QPoint
+from PySide6.QtGui import QShortcut, QKeySequence, QScreen
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QFrame, QSplitter, QApplication
 from qfluentwidgets import (
     FluentWindow, BodyLabel, SubtitleLabel,
     CardWidget, SmoothScrollArea, FluentIcon, IconWidget,
@@ -410,10 +410,44 @@ class AddTemplateToExperimentDialog(MessageBoxBase):
 class ExperimentDetailWindow(FluentWindow):
     """实验详情独立窗口"""
 
-    def __init__(self, experiment_id: int, parent=None):
-        super().__init__(parent)
+    # 类变量：跟踪已打开的窗口 {experiment_id: window}
+    _instances: dict[int, 'ExperimentDetailWindow'] = {}
+    # 级联偏移计数器
+    _cascade_offset = 0
+    # 记录已保存的窗口位置 {experiment_id: QPoint}
+    _saved_positions: dict[int, QPoint] = {}
+
+    # 级联偏移量（像素）
+    CASCADE_STEP = 30
+    MAX_CASCADE = 10  # 最大级联层数
+
+    @classmethod
+    def getOrCreate(cls, experiment_id: int, parent: QWidget = None) -> 'ExperimentDetailWindow':
+        """获取或创建窗口实例，确保同一实验只有一个窗口
+
+        Args:
+            experiment_id: 实验ID
+            parent: 父窗口（用于计算初始位置）
+        """
+        if experiment_id in cls._instances:
+            window = cls._instances[experiment_id]
+            # 如果窗口已关闭但未销毁，重新创建
+            if window.isVisible():
+                window.raise_()
+                window.activateWindow()
+                return window
+            else:
+                del cls._instances[experiment_id]
+
+        window = cls(experiment_id, parent)
+        cls._instances[experiment_id] = window
+        return window
+
+    def __init__(self, experiment_id: int, parent: QWidget = None):
+        super().__init__(None)  # parent=None 让窗口完全独立
         self._experiment_id = experiment_id
         self._experiment: ExperimentResponse = None
+        self._parent = parent
 
         # 设置为独立窗口（不随主窗口最小化）
         self.setWindowFlags(Qt.Window)
@@ -421,6 +455,9 @@ class ExperimentDetailWindow(FluentWindow):
         self.setWindowTitle("实验详情")
         self.resize(1000, 700)
         self.setMinimumSize(700, 500)
+
+        # 设置窗口初始位置
+        self._setInitialPosition()
 
         # 启用 Mica 效果
         self.micaEnabled = True
@@ -448,6 +485,114 @@ class ExperimentDetailWindow(FluentWindow):
 
         # 加载数据
         self._loadExperiment()
+
+    def closeEvent(self, event):
+        """窗口关闭时保存位置并清理实例引用"""
+        # 保存窗口位置
+        ExperimentDetailWindow._saved_positions[self._experiment_id] = self.pos()
+        # 减少级联计数
+        if ExperimentDetailWindow._cascade_offset > 0:
+            ExperimentDetailWindow._cascade_offset -= 1
+
+        if self._experiment_id in ExperimentDetailWindow._instances:
+            del ExperimentDetailWindow._instances[self._experiment_id]
+        super().closeEvent(event)
+
+    def _setInitialPosition(self):
+        """设置窗口初始位置（Windows 11 风格）"""
+        # 如果有保存的位置，使用保存的位置
+        if self._experiment_id in ExperimentDetailWindow._saved_positions:
+            saved_pos = ExperimentDetailWindow._saved_positions[self._experiment_id]
+            if self._isPositionValid(saved_pos):
+                self.move(saved_pos)
+                return
+
+        # 获取参考窗口（父窗口或主窗口）
+        ref_window = self._getReferenceWindow()
+        if ref_window:
+            # 计算级联偏移
+            offset = ExperimentDetailWindow._cascade_offset * self.CASCADE_STEP
+            ExperimentDetailWindow._cascade_offset = min(
+                ExperimentDetailWindow._cascade_offset + 1,
+                self.MAX_CASCADE
+            )
+
+            # 计算新位置：父窗口中心偏移
+            new_pos = self._calculateCenteredPosition(ref_window, offset)
+            self.move(new_pos)
+        else:
+            # 没有参考窗口，屏幕居中
+            self._centerOnScreen()
+
+    def _getReferenceWindow(self) -> QWidget:
+        """获取参考窗口（用于计算初始位置）"""
+        # 优先使用传入的父窗口
+        if self._parent and self._parent.isVisible():
+            return self._parent
+
+        # 尝试获取主窗口
+        app = QApplication.instance()
+        if app:
+            for widget in app.topLevelWidgets():
+                if widget.isVisible() and widget != self:
+                    # 检查是否是主窗口类型（FluentWindow 但不是 ExperimentDetailWindow）
+                    if isinstance(widget, FluentWindow) and not isinstance(widget, ExperimentDetailWindow):
+                        return widget
+        return None
+
+    def _calculateCenteredPosition(self, ref_window: QWidget, offset: int) -> QPoint:
+        """计算相对于参考窗口的居中位置（带级联偏移）"""
+        ref_geometry = ref_window.geometry()
+        window_size = self.size()
+
+        # 计算居中位置
+        x = ref_geometry.x() + (ref_geometry.width() - window_size.width()) // 2 + offset
+        y = ref_geometry.y() + (ref_geometry.height() - window_size.height()) // 2 + offset
+
+        # 确保窗口不超出屏幕边界
+        screen = self._getScreenAt(QPoint(x, y))
+        if screen:
+            screen_geometry = screen.availableGeometry()
+            x = max(screen_geometry.left(), min(x, screen_geometry.right() - window_size.width()))
+            y = max(screen_geometry.top(), min(y, screen_geometry.bottom() - window_size.height()))
+
+        return QPoint(x, y)
+
+    def _isPositionValid(self, pos: QPoint) -> bool:
+        """检查位置是否有效（在可见屏幕区域内）"""
+        screen = self._getScreenAt(pos)
+        if not screen:
+            return False
+
+        screen_geometry = screen.availableGeometry()
+        window_size = self.size()
+
+        # 检查窗口是否至少有一部分在屏幕上
+        return (pos.x() < screen_geometry.right() and
+                pos.y() < screen_geometry.bottom() and
+                pos.x() + window_size.width() > screen_geometry.left() and
+                pos.y() + window_size.height() > screen_geometry.top())
+
+    def _getScreenAt(self, pos: QPoint) -> QScreen:
+        """获取指定位置所在的屏幕"""
+        app = QApplication.instance()
+        if app:
+            for screen in app.screens():
+                if screen.geometry().contains(pos):
+                    return screen
+            # 如果不在任何屏幕上，返回主屏幕
+            return app.primaryScreen()
+        return None
+
+    def _centerOnScreen(self):
+        """将窗口居中到屏幕"""
+        screen = QApplication.primaryScreen()
+        if screen:
+            screen_geometry = screen.availableGeometry()
+            window_size = self.size()
+            x = (screen_geometry.width() - window_size.width()) // 2 + screen_geometry.left()
+            y = (screen_geometry.height() - window_size.height()) // 2 + screen_geometry.top()
+            self.move(x, y)
 
     def _createTitleBarColorDot(self):
         """在标题栏左侧创建装饰色方块"""

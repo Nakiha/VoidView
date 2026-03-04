@@ -622,19 +622,53 @@ async def get_experiment_template_input_files(
     experiment_id: int,
     template_id: int,
     target: str = Query("private", description="上传目标: shared(共享) 或 private(私有)"),
+    include_shared: bool = Query(False, description="是否包含共享输入文件"),
     current_user: dict = Depends(get_current_user)
 ):
-    """获取实验-模板关联的输入文件"""
+    """获取实验-模板关联的输入文件
+
+    Args:
+        include_shared: 当为 True 时，返回共享+私有文件合并列表
+                       每个文件会带有 source 字段标识来源 ("shared" 或 "private")
+    """
     from app.storage.excel_store import excel_store
 
     if target == "shared":
         data = excel_store.get_experiment_shared_input_files(experiment_id)
         if data is None:
             raise NotFoundException("实验不存在")
+        # 标记文件来源
+        for f in data.get("input_files", []):
+            f["source"] = "shared"
+        return data
+
+    # 获取私有文件
+    data = excel_store.get_experiment_template_input_files(experiment_id, template_id)
+    if data is None:
+        raise NotFoundException("实验-模板关联不存在")
+
+    if include_shared:
+        # 获取共享文件并合并
+        shared_data = excel_store.get_experiment_shared_input_files(experiment_id)
+        if shared_data:
+            shared_files = shared_data.get("input_files", [])
+            # 标记共享文件来源
+            for f in shared_files:
+                f["source"] = "shared"
+            # 标记私有文件来源
+            for f in data.get("input_files", []):
+                f["source"] = "private"
+            # 合并：共享文件在前，私有文件在后
+            data["input_files"] = shared_files + data["input_files"]
+            data["has_shared"] = len(shared_files) > 0
+        else:
+            for f in data.get("input_files", []):
+                f["source"] = "private"
+            data["has_shared"] = False
     else:
-        data = excel_store.get_experiment_template_input_files(experiment_id, template_id)
-        if data is None:
-            raise NotFoundException("实验-模板关联不存在")
+        for f in data.get("input_files", []):
+            f["source"] = "private"
+
     return data
 
 

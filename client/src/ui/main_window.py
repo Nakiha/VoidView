@@ -73,7 +73,7 @@ class MainWindow(FluentWindow):
     def _openExperimentDetail(self, experiment_id: int):
         """打开实验详情窗口"""
         from ui.pages.experiment.experiment_detail_window import ExperimentDetailWindow
-        window = ExperimentDetailWindow(experiment_id)  # 不传入 parent，使其成为独立窗口
+        window = ExperimentDetailWindow.getOrCreate(experiment_id, self)
         window.show()
 
     def _createHomePage(self) -> QWidget:

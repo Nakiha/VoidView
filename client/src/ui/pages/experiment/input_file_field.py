@@ -343,7 +343,7 @@ class InputFileField(QWidget):
         if not self._storage_path and self._experiment_id is not None and self._template_id is not None:
             from api.experiment import version_api
             try:
-                data = version_api.get_input_files(self._experiment_id, self._template_id)
+                data = version_api.get_input_files(self._experiment_id, self._template_id, include_shared=True)
                 self._storage_path = data.get("storage_path", "")
             except Exception:
                 pass
@@ -404,28 +404,21 @@ class InputFileField(QWidget):
 
         try:
             # 上传文件到服务端
-            result = version_api.upload_input_files(
+            version_api.upload_input_files(
                 self._experiment_id,
                 self._template_id,
                 files,
                 target=target
             )
 
-            # 更新本地状态
-            self._storage_path = result.get("storage_path", "")
-            self._files = result.get("input_files", [])
-            self._updateFileList()
-
-            # 更新可用空间显示
-            free_space = result.get("free_space")
-            if free_space is not None:
-                self.freeSpaceLabel.setText(f"可用空间: {format_file_size(free_space)}")
+            # 上传成功后重新加载完整列表（共享+私有）
+            self.load_from_backend()
 
             self.filesChanged.emit(self._files)
 
             InfoBar.success(
                 title="上传成功",
-                content=f"已上传 {len(files)} 个文件到服务端",
+                content=f"已上传 {len(files)} 个文件到{target_name}",
                 parent=self.window(),
                 duration=3000
             )
@@ -440,11 +433,33 @@ class InputFileField(QWidget):
 
     def _updateFileList(self):
         """更新文件列表显示"""
+        from PySide6.QtGui import QColor
+
         self.fileList.clear()
         total_size = 0
 
+        # 获取当前主题的共享文件标签颜色
+        if isDarkTheme():
+            shared_color = QColor("#4ECDC4")  # 青色，在深色主题下可见
+        else:
+            shared_color = QColor("#00897B")  # 深青色
+
         for file_info in self._files:
-            item = QListWidgetItem(f"{file_info['name']}  ({format_file_size(file_info['size'])})")
+            source = file_info.get("source", "private")
+            name = file_info["name"]
+            size_str = format_file_size(file_info["size"])
+
+            # 共享文件添加标记
+            if source == "shared":
+                display_text = f"[共享] {name}  ({size_str})"
+            else:
+                display_text = f"{name}  ({size_str})"
+
+            item = QListWidgetItem(display_text)
+            # 共享文件使用不同的颜色
+            if source == "shared":
+                item.setForeground(shared_color)
+
             self.fileList.addItem(item)
             total_size += file_info['size']
 
@@ -488,13 +503,18 @@ class InputFileField(QWidget):
         self._template_id = template_id
 
     def load_from_backend(self):
-        """从后端加载输入文件数据"""
+        """从后端加载输入文件数据（包含共享+私有文件）"""
         if self._experiment_id is None or self._template_id is None:
             return
 
         from api.experiment import version_api
         try:
-            data = version_api.get_input_files(self._experiment_id, self._template_id)
+            # 获取共享+私有文件合并列表
+            data = version_api.get_input_files(
+                self._experiment_id,
+                self._template_id,
+                include_shared=True
+            )
             self._storage_path = data.get("storage_path", "")
             self._files = data.get("input_files", [])
             self._updateFileList()

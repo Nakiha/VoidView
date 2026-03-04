@@ -48,7 +48,8 @@ class ExperimentTag(QWidget):
         layout.addWidget(self.label)
 
         self.setFixedHeight(28)
-        self.setCursor(Qt.PointingHandCursor)
+        # 启用样式背景支持
+        self.setAttribute(Qt.WA_StyledBackground, True)
         self.setStyleSheet("""
             ExperimentTag {
                 background-color: rgba(255, 255, 255, 0.06);
@@ -59,9 +60,22 @@ class ExperimentTag(QWidget):
             }
         """)
 
+    def enterEvent(self, event):
+        """鼠标进入时设置手型"""
+        self.setCursor(Qt.PointingHandCursor)
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        """鼠标离开时重置cursor"""
+        self.setCursor(Qt.ArrowCursor)
+        super().leaveEvent(event)
+
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
+            self.setCursor(Qt.ArrowCursor)  # 点击后立即恢复箭头光标
             self.clicked.emit(self._experiment.id)
+            event.accept()
+            return
         super().mousePressEvent(event)
 
 
@@ -225,9 +239,6 @@ class MatrixCard(CardWidget):
         self._tagsRow = ExperimentTagsRow(experiments, self)
         self._tagsRow.experimentClicked.connect(self.experimentClicked.emit)
         layout.addWidget(self._tagsRow, 2)
-
-        # 设置可点击
-        self.setCursor(Qt.PointingHandCursor)
 
     def setMultiSelectMode(self, enabled: bool):
         """设置多选模式"""

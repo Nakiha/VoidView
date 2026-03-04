@@ -3,7 +3,7 @@
 from typing import Optional
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QSizePolicy
-from qfluentwidgets import SubtitleLabel, SmoothScrollArea
+from qfluentwidgets import SubtitleLabel, SmoothScrollArea, ScrollBarHandleDisplayMode
 
 from .editable_field import EditableField
 from .input_file_field import InputFileField
@@ -32,6 +32,9 @@ class BasicInfoPage(SmoothScrollArea):
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.setStyleSheet("background-color: transparent; border: none;")
         self.setWidgetResizable(True)
+
+        # 设置滚动条仅在悬停时显示
+        self.delegate.vScrollBar.setHandleDisplayMode(ScrollBarHandleDisplayMode.ON_HOVER)
 
         # 滚动内容容器
         self.contentWidget = QWidget(self)

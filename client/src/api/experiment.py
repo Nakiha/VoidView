@@ -265,22 +265,27 @@ class TemplateVersionAPI:
         return api_client.put(f"/experiments/{experiment_id}/templates/{template_id}/notes", {"notes": notes})
 
     @staticmethod
-    def get_input_files(experiment_id: int, template_id: int, target: str = "private") -> dict:
+    def get_input_files(experiment_id: int, template_id: int, target: str = "private", include_shared: bool = False) -> dict:
         """获取实验-模板关联的输入文件
 
         Args:
             experiment_id: 实验ID
             template_id: 模板ID
             target: 上传目标 - "shared"(共享) 或 "private"(私有)
+            include_shared: 是否包含共享输入文件（当 target 为 private 时有效）
         """
+        params = {"target": target}
+        if include_shared:
+            params["include_shared"] = "true"
         response = api_client.get(
             f"/experiments/{experiment_id}/templates/{template_id}/input-files",
-            params={"target": target}
+            params=params
         )
         return {
             "storage_path": response.get("storage_path", ""),
             "input_files": response.get("input_files", []),
-            "free_space": response.get("free_space")  # 可能为 None
+            "free_space": response.get("free_space"),  # 可能为 None
+            "has_shared": response.get("has_shared", False)  # 是否有共享文件
         }
 
     @staticmethod
