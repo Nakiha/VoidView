@@ -1,14 +1,21 @@
 """QApplication 封装"""
 
 import sys
+import os
 import ctypes
 import threading
 from typing import Optional
 from pathlib import Path
 
+# === 性能优化：在导入 Qt 之前设置环境变量 ===
+# 使用 'threaded' 渲染循环，避免 'basic' 的单线程渲染导致的卡顿
+# 可选值: basic, threaded, windows (Windows专用)
+if sys.platform == "win32":
+    os.environ.setdefault("QSG_RENDER_LOOP", "threaded")
+
 from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
 from PySide6.QtCore import Qt, QThread, Signal, qInstallMessageHandler
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon, QSurfaceFormat
 from qfluentwidgets import setThemeColor, setTheme, Theme, InfoBar, InfoBarPosition, SubtitleLabel, IndeterminateProgressRing, FluentWindow
 
 from voidview_shared import setup_logging, get_logger
@@ -263,6 +270,27 @@ class VoidViewApplication:
         # 设置 Windows 应用程序 ID (必须在创建 QApplication 之前)
         _set_windows_app_id()
 
+        # === 性能优化：启用硬件加速 ===
+        # 必须在创建 QApplication 之前设置
+
+        # 启用高DPI缩放 (Qt6 默认启用，但显式设置更保险)
+        QApplication.setHighDpiScaleFactorRoundingPolicy(
+            Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+        )
+
+        # 设置 OpenGL 表面格式 - 启用抗锯齿和垂直同步
+        fmt = QSurfaceFormat()
+        fmt.setSwapInterval(1)  # 启用垂直同步，避免撕裂
+        fmt.setSamples(4)       # 4x MSAA 抗锯齿
+        QSurfaceFormat.setDefaultFormat(fmt)
+
+        # 在 Windows 上优先使用 ANGLE (DirectX 后端)，比纯 OpenGL 更稳定
+        # 如果 ANGLE 不可用则回退到 OpenGL
+        QApplication.setAttribute(Qt.AA_UseOpenGLES)
+
+        # 启用高性能像素图
+        QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
+
         # 创建 QApplication
         self.app = QApplication(sys.argv)
         self.app.setApplicationName("VoidView")
@@ -291,7 +319,43 @@ class VoidViewApplication:
         self._serverConfigDialog: Optional[ServerConfigDialog] = None
         self._localServerWorker: Optional[LocalServerStartWorker] = None
 
+        # 打印硬件加速状态
+        self._logGraphicsInfo()
+
         logger.info("VoidView 客户端初始化完成")
+
+    def _logGraphicsInfo(self):
+        """打印图形渲染信息"""
+        # 检查 OpenGL/OpenGLES 属性
+        uses_opengles = self.app.testAttribute(Qt.AA_UseOpenGLES)
+        uses_desktop_opengl = self.app.testAttribute(Qt.AA_UseDesktopOpenGL)
+        uses_software = self.app.testAttribute(Qt.AA_UseSoftwareOpenGL)
+        high_dpi_pixmaps = self.app.testAttribute(Qt.AA_UseHighDpiPixmaps)
+
+        # 获取表面格式信息
+        fmt = QSurfaceFormat.defaultFormat()
+        swap_interval = fmt.swapInterval()
+        samples = fmt.samples()
+
+        # 获取渲染循环类型
+        render_loop = os.environ.get("QSG_RENDER_LOOP", "default")
+
+        logger.info(f"图形渲染配置:")
+        logger.info(f"  - 渲染循环: {render_loop}")
+        logger.info(f"  - 使用 OpenGLES (ANGLE): {uses_opengles}")
+        logger.info(f"  - 使用桌面 OpenGL: {uses_desktop_opengl}")
+        logger.info(f"  - 使用软件渲染: {uses_software}")
+        logger.info(f"  - 高DPI像素图: {high_dpi_pixmaps}")
+        logger.info(f"  - 垂直同步间隔: {swap_interval}")
+        logger.info(f"  - 抗锯齿采样数: {samples}")
+
+        # 尝试获取实际使用的图形后端
+        try:
+            from PySide6.QtQuick import QQuickWindow
+            backend = QQuickWindow.sceneGraphBackend()
+            logger.info(f"  - Scene Graph 后端: {backend}")
+        except ImportError:
+            pass  # 非 Quick 应用
 
     def run(self):
         """运行应用"""
