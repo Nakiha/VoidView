@@ -315,6 +315,45 @@ class TemplateVersionAPI:
             params={"target": target}
         )
 
+    @staticmethod
+    def get_output_files(experiment_id: int, template_id: int, version_id: int) -> dict:
+        """获取版本输出文件
+
+        Args:
+            experiment_id: 实验ID
+            template_id: 模板ID
+            version_id: 版本ID
+
+        Returns:
+            包含 storage_path, output_files, free_space 的响应
+        """
+        response = api_client.get(
+            f"/experiments/{experiment_id}/templates/{template_id}/versions/{version_id}/output-files"
+        )
+        return {
+            "storage_path": response.get("storage_path", ""),
+            "output_files": response.get("output_files", []),
+            "free_space": response.get("free_space")
+        }
+
+    @staticmethod
+    def upload_output_files(experiment_id: int, template_id: int, version_id: int, file_paths: list) -> dict:
+        """上传输出文件到服务端
+
+        Args:
+            experiment_id: 实验ID
+            template_id: 模板ID
+            version_id: 版本ID
+            file_paths: 本地文件路径列表
+
+        Returns:
+            包含 storage_path, uploaded_files, output_files 的响应
+        """
+        return api_client.upload_files(
+            f"/experiments/{experiment_id}/templates/{template_id}/versions/{version_id}/upload-output-files",
+            file_paths
+        )
+
 
 # 便捷访问
 customer_api = CustomerAPI()

@@ -385,7 +385,7 @@ class TemplateDetailPanel(QWidget):
     def _createVersionPage(self, version: TemplateVersionResponse) -> VersionTabPage:
         """创建版本页面"""
         page = VersionTabPage(self)
-        page.set_version(version)
+        page.set_version(version, self._experiment_id, self._template_id)
         page.notesChanged.connect(self._onVersionNotesChanged)
         page.templateChanged.connect(self._onVersionTemplateChanged)
         return page

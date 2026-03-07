@@ -773,3 +773,133 @@ async def upload_input_files(
         "input_files": existing_files,
         "free_space": free_space
     }
+
+
+# ============ Version OutputFiles API ============
+
+@router.get("/{experiment_id}/templates/{template_id}/versions/{version_id}/output-files")
+async def get_version_output_files(
+    experiment_id: int,
+    template_id: int,
+    version_id: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """获取版本输出文件列表
+
+    输出文件存储在: template_{template_id}/ver_{version_id}/output 目录下
+    """
+    import os
+    import shutil
+    from app.config import settings
+    from app.storage.excel_store import excel_store
+
+    # 验证实验-模板关联存在
+    data = excel_store.get_experiment_template_input_files(experiment_id, template_id)
+    if data is None:
+        raise NotFoundException("实验-模板关联不存在")
+
+    # 验证版本存在
+    version_service = TemplateVersionService()
+    version = await version_service.get_by_id(version_id)
+    if not version:
+        raise NotFoundException("版本不存在")
+
+    # 获取输出目录
+    output_dir = settings.get_version_output_dir(experiment_id, template_id, version_id)
+
+    # 扫描输出文件
+    output_files = []
+    if output_dir.exists():
+        for file_path in output_dir.iterdir():
+            if file_path.is_file():
+                output_files.append({
+                    "name": file_path.name,
+                    "size": file_path.stat().st_size,
+                    "modified": file_path.stat().st_mtime
+                })
+
+    # 按名称排序
+    output_files.sort(key=lambda x: x["name"])
+
+    # 计算可用空间
+    free_space = None
+    try:
+        usage = shutil.disk_usage(output_dir if output_dir.exists() else settings.storage_path)
+        free_space = usage.free
+    except Exception:
+        pass
+
+    return {
+        "storage_path": str(output_dir),
+        "output_files": output_files,
+        "free_space": free_space
+    }
+
+
+@router.post("/{experiment_id}/templates/{template_id}/versions/{version_id}/upload-output-files")
+async def upload_output_files(
+    experiment_id: int,
+    template_id: int,
+    version_id: int,
+    files: list[UploadFile] = File(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """上传输出文件到版本输出目录
+
+    输出文件存储在: template_{template_id}/ver_{version_id}/output 目录下
+    """
+    import shutil
+    from app.config import settings
+    from app.storage.excel_store import excel_store
+
+    # 验证实验-模板关联存在
+    data = excel_store.get_experiment_template_input_files(experiment_id, template_id)
+    if data is None:
+        raise NotFoundException("实验-模板关联不存在")
+
+    # 验证版本存在
+    version_service = TemplateVersionService()
+    version = await version_service.get_by_id(version_id)
+    if not version:
+        raise NotFoundException("版本不存在")
+
+    # 获取输出目录并确保存在
+    output_dir = settings.get_version_output_dir(experiment_id, template_id, version_id)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    uploaded_files = []
+    for file in files:
+        if not file.filename:
+            continue
+
+        # 保存文件
+        file_path = output_dir / file.filename
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        # 获取文件大小
+        uploaded_files.append({
+            "name": file.filename,
+            "size": file_path.stat().st_size,
+            "path": str(file_path)
+        })
+
+    # 重新扫描输出文件
+    output_files = []
+    for file_path in output_dir.iterdir():
+        if file_path.is_file():
+            output_files.append({
+                "name": file_path.name,
+                "size": file_path.stat().st_size,
+                "modified": file_path.stat().st_mtime
+            })
+
+    # 按名称排序
+    output_files.sort(key=lambda x: x["name"])
+
+    return {
+        "message": "上传成功",
+        "storage_path": str(output_dir),
+        "uploaded_files": uploaded_files,
+        "output_files": output_files
+    }

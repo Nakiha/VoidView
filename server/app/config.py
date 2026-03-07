@@ -108,6 +108,10 @@ class Settings(BaseSettings):
         """获取版本目录路径"""
         return self.get_template_versions_dir(experiment_id, template_id) / f"version_{version_id}"
 
+    def get_version_output_dir(self, experiment_id: int, template_id: int, version_id: int) -> Path:
+        """获取版本输出文件目录: template_{template_id}/ver_{version_id}/output"""
+        return self.get_template_dir(experiment_id, template_id) / f"ver_{version_id}" / "output"
+
 
 settings = Settings()
 

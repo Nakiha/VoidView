@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout, QSizePolicy
 from qfluentwidgets import SubtitleLabel, SmoothScrollArea, ScrollBarHandleDisplayMode
 
 from .editable_field import EditableField
-from .input_file_field import InputFileField
+from .file_list_field import FileListField
 from models.experiment import TemplateVersionResponse
 
 
@@ -59,7 +59,8 @@ class BasicInfoPage(SmoothScrollArea):
         layout.addWidget(self.notesField)
 
         # 输入文件组件（最小高度在 resize 时动态设置）
-        self.inputFileField = InputFileField(
+        self.inputFileField = FileListField(
+            mode="input",
             storage_path="",
             parent=self.contentWidget
         )
@@ -98,10 +99,10 @@ class BasicInfoPage(SmoothScrollArea):
         self.filesChanged.emit(files)
 
 
-class VersionTabPage(QWidget):
+class VersionTabPage(SmoothScrollArea):
     """版本标签页
 
-    显示特定版本的备注和模板配置
+    显示特定版本的备注、模板配置和输出文件，支持滚动
     """
 
     notesChanged = Signal(int, str)  # (version_id, notes)
@@ -110,14 +111,26 @@ class VersionTabPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._version: Optional[TemplateVersionResponse] = None
+        self._experiment_id: Optional[int] = None
+        self._template_id: Optional[int] = None
         self.setupUI()
 
     def setupUI(self):
         # 页面背景透明
         self.setAttribute(Qt.WA_TranslucentBackground, True)
-        self.setStyleSheet("background-color: transparent;")
+        self.setStyleSheet("background-color: transparent; border: none;")
+        self.setWidgetResizable(True)
 
-        layout = QVBoxLayout(self)
+        # 设置滚动条仅在悬停时显示
+        self.delegate.vScrollBar.setHandleDisplayMode(ScrollBarHandleDisplayMode.ON_HOVER)
+
+        # 滚动内容容器
+        self.contentWidget = QWidget(self)
+        self.contentWidget.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.contentWidget.setStyleSheet("background-color: transparent;")
+        self.setWidget(self.contentWidget)
+
+        layout = QVBoxLayout(self.contentWidget)
         # 收窄边距，左侧对齐标签页页签文本（约16px）
         layout.setContentsMargins(16, 12, 16, 12)
         layout.setSpacing(12)
@@ -128,7 +141,7 @@ class VersionTabPage(QWidget):
             content="",
             is_formatted=False,
             placeholder="暂无备注，点击编辑按钮添加...",
-            parent=self
+            parent=self.contentWidget
         )
         self.notesField.contentChanged.connect(self._onNotesChanged)
         layout.addWidget(self.notesField)
@@ -139,19 +152,49 @@ class VersionTabPage(QWidget):
             content="",
             is_formatted=True,
             placeholder="暂无模板配置，点击编辑按钮添加 JSON 或 YAML...",
-            parent=self
+            parent=self.contentWidget
         )
         self.templateField.contentChanged.connect(self._onTemplateChanged)
         layout.addWidget(self.templateField)
 
-        layout.addStretch()
+        # 输出文件组件
+        self.outputFileField = FileListField(
+            mode="output",
+            storage_path="",
+            parent=self.contentWidget
+        )
+        layout.addWidget(self.outputFileField)
 
-    def set_version(self, version: TemplateVersionResponse):
-        """设置版本数据"""
+    def resizeEvent(self, event):
+        """窗口大小变化时，动态调整输出文件组件的最小高度"""
+        super().resizeEvent(event)
+        # 输出文件组件的最小高度 = 标签页高度 - 边距
+        # 这样总内容高度 = 备注高度 + 模板配置高度 + 标签页高度，超出可视区域
+        # 用户滚动下去后，文件列表刚好填满整个标签页
+        margins = self.contentWidget.layout().contentsMargins()
+        page_height = self.height() - margins.top() - margins.bottom()
+        self.outputFileField.setMinimumHeight(max(page_height, 150))
+
+    def set_version(self, version: TemplateVersionResponse, experiment_id: int = None, template_id: int = None):
+        """设置版本数据
+
+        Args:
+            version: 版本数据
+            experiment_id: 实验ID（用于加载输出文件）
+            template_id: 模板ID（用于加载输出文件）
+        """
         self._version = version
+        self._experiment_id = experiment_id
+        self._template_id = template_id
+
         # 从版本对象获取 notes 和 template_content
         self.notesField.setContent(version.notes or "")
         self.templateField.setContent(version.template_content or "")
+
+        # 加载输出文件
+        if experiment_id and template_id:
+            self.outputFileField.set_experiment_template(experiment_id, template_id, version.id)
+            self.outputFileField.load_from_backend()
 
     def _onNotesChanged(self, content: str):
         """备注变化"""

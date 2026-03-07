@@ -1,11 +1,11 @@
-"""输入文件组件 - 支持文件上传和管理"""
+"""通用文件列表组件 - 支持输入文件(可上传)和输出文件(只读)"""
 
 import os
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Literal
 from urllib.parse import urlparse
 
-from PySide6.QtCore import Qt, Signal, QMimeData, QTimer
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFileDialog,
     QAbstractItemView, QSizePolicy, QListWidgetItem
@@ -205,8 +205,12 @@ class FileDropArea(CardWidget):
             self.filesDropped.emit(files)
 
 
-class InputFileField(QWidget):
-    """输入文件组件
+class FileListField(QWidget):
+    """通用文件列表组件
+
+    支持两种模式：
+    - input: 输入文件，支持上传，显示共享/私有标记
+    - output: 输出文件，只读显示
 
     布局：
     - 第一行：标题 + 服务器地址 + 统计信息（文件数、总大小、可用空间）+ 按钮
@@ -217,16 +221,19 @@ class InputFileField(QWidget):
 
     def __init__(
         self,
+        mode: Literal["input", "output"] = "input",
         storage_path: str = "",
-        placeholder: str = "暂无输入文件",
+        placeholder: str = "",
         parent=None
     ):
         super().__init__(parent)
+        self._mode = mode
         self._storage_path = storage_path
-        self._placeholder = placeholder
+        self._placeholder = placeholder or ("暂无输入文件" if mode == "input" else "暂无输出文件")
         self._files: List[dict] = []  # [{name, size}, ...]
         self._experiment_id: Optional[int] = None
         self._template_id: Optional[int] = None
+        self._version_id: Optional[int] = None  # 仅输出文件需要
         self.setupUI()
 
     def setupUI(self):
@@ -246,7 +253,9 @@ class InputFileField(QWidget):
         headerLayout.setContentsMargins(0, 0, 0, 0)
         headerLayout.setSpacing(8)
 
-        self.titleLabel = StrongBodyLabel("输入文件", self)
+        # 标题
+        title = "输入文件" if self._mode == "input" else "输出文件"
+        self.titleLabel = StrongBodyLabel(title, self)
         headerLayout.addWidget(self.titleLabel)
 
         # 服务器地址（灰色次要文字）
@@ -264,9 +273,11 @@ class InputFileField(QWidget):
         self.totalSizeLabel.setStyleSheet("color: gray;")
         headerLayout.addWidget(self.totalSizeLabel)
 
-        self.freeSpaceLabel = CaptionLabel("可用空间: --", self)
-        self.freeSpaceLabel.setStyleSheet("color: gray;")
-        headerLayout.addWidget(self.freeSpaceLabel)
+        # 输入模式显示可用空间
+        if self._mode == "input":
+            self.freeSpaceLabel = CaptionLabel("可用空间: --", self)
+            self.freeSpaceLabel.setStyleSheet("color: gray;")
+            headerLayout.addWidget(self.freeSpaceLabel)
 
         headerLayout.addStretch()
 
@@ -291,13 +302,24 @@ class InputFileField(QWidget):
         # 文件列表（占据剩余空间）
         self.fileList = ListWidget(self)
         self.fileList.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.fileList.setSelectionMode(QAbstractItemView.SingleSelection)
+        # ExtendedSelection 支持: 单选、Ctrl+点击切换、Shift+点击范围选择
+        self.fileList.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        # 点击空白处取消选择
+        self.fileList.mousePressEvent = self._onListMousePress
         # 添加背景色提升视觉层级
         self._updateListStyle()
         layout.addWidget(self.fileList, 1)  # stretch=1 占据剩余空间
 
-        # 更新可用空间
-        self._updateFreeSpace()
+    def _onListMousePress(self, event):
+        """处理列表鼠标点击 - 点击空白处取消选择"""
+        # 获取点击位置对应的 item
+        item = self.fileList.itemAt(event.position().toPoint())
+        if item is None:
+            # 点击在空白区域，清除选择
+            self.fileList.clearSelection()
+        else:
+            # 调用父类方法处理正常的选择逻辑
+            ListWidget.mousePressEvent(self.fileList, event)
 
     def _updateListStyle(self):
         """更新列表样式，根据主题设置背景色"""
@@ -339,22 +361,13 @@ class InputFileField(QWidget):
 
     def _onCopyPath(self):
         """复制存储路径"""
-        # 如果没有存储路径，尝试从后端加载
-        if not self._storage_path and self._experiment_id is not None and self._template_id is not None:
-            from api.experiment import version_api
-            try:
-                data = version_api.get_input_files(self._experiment_id, self._template_id, include_shared=True)
-                self._storage_path = data.get("storage_path", "")
-            except Exception:
-                pass
-
         if self._storage_path:
             from PySide6.QtWidgets import QApplication
             clipboard = QApplication.clipboard()
             clipboard.setText(self._storage_path)
             InfoBar.success(
                 title="已复制",
-                content=f"路径已复制到剪贴板",
+                content="路径已复制到剪贴板",
                 parent=self.window(),
                 duration=2000
             )
@@ -368,15 +381,25 @@ class InputFileField(QWidget):
 
     def _onUpload(self):
         """上传文件"""
-        dialog = FileUploadDialog(self.window())
-        dialog.filesSelected.connect(self._onFilesSelected)
-
-        if dialog.exec():
-            # 文件会在 _onFilesSelected 中处理
-            pass
+        if self._mode == "input":
+            # 输入模式：使用带共享/私有选择的对话框
+            dialog = FileUploadDialog(self.window())
+            dialog.filesSelected.connect(self._onFilesSelected)
+            if dialog.exec():
+                pass
+        else:
+            # 输出模式：使用简单的文件选择
+            files, _ = QFileDialog.getOpenFileNames(
+                self,
+                "选择输出文件",
+                "",
+                "所有文件 (*.*)"
+            )
+            if files:
+                self._onOutputFilesSelected(files)
 
     def _onFilesSelected(self, files: List[str], target: str = "private"):
-        """文件被选中 - 上传到服务端
+        """文件被选中 - 上传到服务端（仅输入模式）
 
         Args:
             files: 文件路径列表
@@ -431,6 +454,58 @@ class InputFileField(QWidget):
                 duration=5000
             )
 
+    def _onOutputFilesSelected(self, files: List[str]):
+        """输出文件被选中 - 上传到服务端
+
+        Args:
+            files: 文件路径列表
+        """
+        if self._experiment_id is None or self._template_id is None or self._version_id is None:
+            InfoBar.warning(
+                title="无法上传",
+                content="请先保存版本后再上传文件",
+                parent=self.window(),
+                duration=3000
+            )
+            return
+
+        from api.experiment import version_api
+
+        # 显示上传进度提示
+        InfoBar.info(
+            title="正在上传",
+            content=f"正在上传 {len(files)} 个输出文件...",
+            parent=self.window(),
+            duration=5000
+        )
+
+        try:
+            # 上传文件到服务端
+            version_api.upload_output_files(
+                self._experiment_id,
+                self._template_id,
+                self._version_id,
+                files
+            )
+
+            # 上传成功后重新加载
+            self.load_from_backend()
+
+            InfoBar.success(
+                title="上传成功",
+                content=f"已上传 {len(files)} 个输出文件",
+                parent=self.window(),
+                duration=3000
+            )
+        except Exception as e:
+            logger.error(f"输出文件上传失败: {e}", exc_info=True)
+            InfoBar.error(
+                title="上传失败",
+                content=f"输出文件上传失败: {str(e)}",
+                parent=self.window(),
+                duration=5000
+            )
+
     def _updateFileList(self):
         """更新文件列表显示"""
         from PySide6.QtGui import QColor
@@ -438,26 +513,32 @@ class InputFileField(QWidget):
         self.fileList.clear()
         total_size = 0
 
-        # 获取当前主题的共享文件标签颜色
-        if isDarkTheme():
-            shared_color = QColor("#4ECDC4")  # 青色，在深色主题下可见
-        else:
-            shared_color = QColor("#00897B")  # 深青色
+        # 获取当前主题的共享文件标签颜色（仅输入模式）
+        if self._mode == "input":
+            if isDarkTheme():
+                shared_color = QColor("#4ECDC4")  # 青色，在深色主题下可见
+            else:
+                shared_color = QColor("#00897B")  # 深青色
 
         for file_info in self._files:
-            source = file_info.get("source", "private")
             name = file_info["name"]
             size_str = format_file_size(file_info["size"])
 
-            # 共享文件添加标记
-            if source == "shared":
-                display_text = f"[共享] {name}  ({size_str})"
+            # 输入模式：共享文件添加标记
+            if self._mode == "input":
+                source = file_info.get("source", "private")
+                if source == "shared":
+                    display_text = f"[共享] {name}  ({size_str})"
+                else:
+                    display_text = f"{name}  ({size_str})"
             else:
+                # 输出模式：简单显示
                 display_text = f"{name}  ({size_str})"
 
             item = QListWidgetItem(display_text)
-            # 共享文件使用不同的颜色
-            if source == "shared":
+
+            # 输入模式：共享文件使用不同的颜色
+            if self._mode == "input" and file_info.get("source") == "shared":
                 item.setForeground(shared_color)
 
             self.fileList.addItem(item)
@@ -467,20 +548,11 @@ class InputFileField(QWidget):
         self.fileCountLabel.setText(f"文件数: {len(self._files)}")
         self.totalSizeLabel.setText(f"总大小: {format_file_size(total_size)}")
 
-    def _updateFreeSpace(self):
-        """更新可用空间（从后端重新加载数据）"""
-        # 可用空间现在从后端获取，这里只在没有加载后端数据时显示 --
-        if self._experiment_id is not None and self._template_id is not None:
-            # 有实验和模板ID时，从后端加载
-            self.load_from_backend()
-        else:
-            self.freeSpaceLabel.setText("可用空间: --")
-
     def set_storage_path(self, path: str):
         """设置存储路径"""
         self._storage_path = path
-        # 可用空间需要从后端获取，这里只显示 --
-        self.freeSpaceLabel.setText("可用空间: --")
+        if self._mode == "input" and hasattr(self, 'freeSpaceLabel'):
+            self.freeSpaceLabel.setText("可用空间: --")
 
     def set_files(self, files: List[dict]):
         """设置文件列表"""
@@ -495,46 +567,84 @@ class InputFileField(QWidget):
         """清空文件列表"""
         self._files = []
         self._updateFileList()
-        self._save_to_backend()
+        if self._mode == "input":
+            self._save_to_backend()
 
-    def set_experiment_template(self, experiment_id: int, template_id: int):
-        """设置实验和模板ID，用于后端交互"""
+    def set_experiment_template(self, experiment_id: int, template_id: int, version_id: Optional[int] = None):
+        """设置实验、模板和版本ID，用于后端交互
+
+        Args:
+            experiment_id: 实验ID
+            template_id: 模板ID
+            version_id: 版本ID（仅输出模式需要）
+        """
         self._experiment_id = experiment_id
         self._template_id = template_id
+        self._version_id = version_id
 
     def load_from_backend(self):
-        """从后端加载输入文件数据（包含共享+私有文件）"""
+        """从后端加载文件数据"""
         if self._experiment_id is None or self._template_id is None:
             return
 
-        from api.experiment import version_api
         try:
-            # 获取共享+私有文件合并列表
-            data = version_api.get_input_files(
-                self._experiment_id,
-                self._template_id,
-                include_shared=True
-            )
-            self._storage_path = data.get("storage_path", "")
-            self._files = data.get("input_files", [])
-            self._updateFileList()
-            # 使用后端返回的可用空间
-            free_space = data.get("free_space")
-            if free_space is not None:
-                self.freeSpaceLabel.setText(f"可用空间: {format_file_size(free_space)}")
+            if self._mode == "input":
+                self._load_input_files()
             else:
-                self.freeSpaceLabel.setText("可用空间: --")
+                self._load_output_files()
         except Exception as e:
-            logger.error(f"加载输入文件失败: experiment_id={self._experiment_id}, template_id={self._template_id}, error={e}")
+            mode_name = "输入" if self._mode == "input" else "输出"
+            logger.error(f"加载{mode_name}文件失败: experiment_id={self._experiment_id}, "
+                        f"template_id={self._template_id}, version_id={self._version_id}, error={e}")
             InfoBar.warning(
                 title="加载失败",
-                content=f"无法加载输入文件: {str(e)}",
+                content=f"无法加载{mode_name}文件: {str(e)}",
                 parent=self.window(),
                 duration=3000
             )
 
+    def _load_input_files(self):
+        """加载输入文件（包含共享+私有文件）"""
+        from api.experiment import version_api
+
+        data = version_api.get_input_files(
+            self._experiment_id,
+            self._template_id,
+            include_shared=True
+        )
+        self._storage_path = data.get("storage_path", "")
+        self._files = data.get("input_files", [])
+        self._updateFileList()
+
+        # 使用后端返回的可用空间
+        free_space = data.get("free_space")
+        if hasattr(self, 'freeSpaceLabel'):
+            if free_space is not None:
+                self.freeSpaceLabel.setText(f"可用空间: {format_file_size(free_space)}")
+            else:
+                self.freeSpaceLabel.setText("可用空间: --")
+
+    def _load_output_files(self):
+        """加载输出文件"""
+        from api.experiment import version_api
+
+        if self._version_id is None:
+            return
+
+        data = version_api.get_output_files(
+            self._experiment_id,
+            self._template_id,
+            self._version_id
+        )
+        self._storage_path = data.get("storage_path", "")
+        self._files = data.get("output_files", [])
+        self._updateFileList()
+
     def _save_to_backend(self):
-        """保存输入文件数据到后端"""
+        """保存输入文件数据到后端（仅输入模式）"""
+        if self._mode != "input":
+            return
+
         if self._experiment_id is None or self._template_id is None:
             return
 
@@ -554,3 +664,7 @@ class InputFileField(QWidget):
                 parent=self.window(),
                 duration=3000
             )
+
+
+# 保持向后兼容的别名
+InputFileField = FileListField

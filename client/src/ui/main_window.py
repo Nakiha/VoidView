@@ -281,6 +281,26 @@ class MainWindow(FluentWindow):
         self.switchTo(self.homePage)
         self.navigationInterface.setCurrentItem('home')
 
+    def closeEvent(self, event):
+        """重写关闭事件，弹出确认对话框"""
+        from qfluentwidgets import MessageBox
+
+        # 确保窗口在最前面（任务栏关闭时窗口可能处于非激活状态）
+        self.showNormal()  # 如果最小化则恢复正常
+        self.raise_()  # 将窗口提升到最前
+        self.activateWindow()  # 激活窗口
+
+        box = MessageBox("确认关闭", "确定要关闭 VoidView 吗？", self)
+        box.yesButton.setText("确认")
+        box.cancelButton.setText("取消")
+        box.setClosableOnMaskClicked(True)
+        if box.exec():
+            # 用户确认关闭
+            event.accept()
+        else:
+            # 用户取消关闭
+            event.ignore()
+
     def _logout(self):
         """退出登录"""
         from qfluentwidgets import MessageBox
