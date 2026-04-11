@@ -12,7 +12,7 @@ dependencies = [
     "pydantic-settings>=2.0",
     "python-dotenv>=1.0",
     "loguru>=0.7",
-    "keyring>=25.0",
+    "keyring>=25.7.0",
     "voidview-shared",
 ]
 
