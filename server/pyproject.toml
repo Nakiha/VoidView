@@ -12,7 +12,7 @@ dependencies = [
     "aiofiles>=23.0",
     "pydantic>=2.0",
     "pydantic-settings>=2.0",
-    "loguru>=0.7",
+    "loguru>=0.7.3",
     "voidview-shared",
     "openpyxl>=3.1",
 ]
